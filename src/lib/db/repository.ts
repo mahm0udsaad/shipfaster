@@ -128,6 +128,238 @@ export async function search(ctx: ActorContext, query: string, projectId?: strin
   };
 }
 
-// NOTE: write operations (createTask, updateTask, addComment, logSession,
-// proposeBrainUpdate, requestApproval) are added in M1 alongside their MCP tools,
-// each wrapping recordActivity so every mutation is audited.
+// ---------- context pack data gathering ----------
+export async function getContextPackData(projectId: string, taskId?: string) {
+  const project = await db().from('projects').select('name').eq('id', projectId).maybeSingle();
+
+  let focusedTask = undefined as any;
+  if (taskId) {
+    const t = await db().from('tasks').select('*').eq('id', taskId).maybeSingle();
+    if (t.data) {
+      const comments = await db()
+        .from('comments')
+        .select('actor_type, body')
+        .eq('task_id', taskId)
+        .order('created_at');
+      focusedTask = {
+        id: t.data.id,
+        title: t.data.title,
+        description: t.data.description,
+        acceptance_criteria: t.data.acceptance_criteria,
+        comments: (comments.data ?? []).map((c: any) => ({ actor: c.actor_type, body: c.body })),
+      };
+    }
+  }
+
+  const brain = await db().from('brain_sections').select('section, body').eq('project_id', projectId);
+  const related = await db()
+    .from('tasks')
+    .select('id, title, status, assignee_agent_id')
+    .eq('project_id', projectId)
+    .neq('status', 'done')
+    .neq('status', 'cancelled')
+    .limit(15);
+  const activity = await db()
+    .from('activity')
+    .select('verb, summary, created_at')
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: false })
+    .limit(10);
+
+  return {
+    projectName: project.data?.name ?? 'unknown',
+    focusedTask,
+    brain: brain.data ?? [],
+    relatedTasks: related.data ?? [],
+    recentActivity: activity.data ?? [],
+  };
+}
+
+// ---------- writes (each audited via recordActivity) ----------
+export async function createTask(
+  ctx: ActorContext,
+  input: {
+    projectId: string;
+    title: string;
+    description?: string;
+    acceptanceCriteria?: string;
+    parentTaskId?: string;
+    priority?: string;
+    dueAt?: string;
+  },
+) {
+  const { data, error } = await db()
+    .from('tasks')
+    .insert({
+      project_id: input.projectId,
+      title: input.title,
+      description: input.description ?? null,
+      acceptance_criteria: input.acceptanceCriteria ?? null,
+      parent_task_id: input.parentTaskId ?? null,
+      priority: input.priority ?? 'medium',
+      due_at: input.dueAt ?? null,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  await recordActivity({
+    projectId: input.projectId,
+    taskId: data.id,
+    ctx,
+    verb: 'task.created',
+    summary: input.title,
+  });
+  return data;
+}
+
+export async function updateTask(
+  ctx: ActorContext,
+  taskId: string,
+  patch: Record<string, unknown>,
+  reason?: string,
+) {
+  const { data, error } = await db().from('tasks').update(patch).eq('id', taskId).select().single();
+  if (error) throw error;
+  await recordActivity({
+    projectId: data.project_id,
+    taskId,
+    ctx,
+    verb: 'task.updated',
+    summary: `updated ${Object.keys(patch).join(', ')}`,
+    reason,
+  });
+  return data;
+}
+
+export async function addComment(ctx: ActorContext, taskId: string, body: string) {
+  const { data, error } = await db()
+    .from('comments')
+    .insert({ task_id: taskId, actor_type: ctx.actorType, actor_agent_id: ctx.agentId, body })
+    .select()
+    .single();
+  if (error) throw error;
+  const task = await db().from('tasks').select('project_id').eq('id', taskId).maybeSingle();
+  await recordActivity({
+    projectId: task.data?.project_id,
+    taskId,
+    ctx,
+    verb: 'comment.added',
+    summary: body.slice(0, 80),
+  });
+  return data;
+}
+
+export async function logSession(
+  ctx: ActorContext,
+  input: {
+    projectId: string;
+    taskId?: string;
+    summary: string;
+    changes?: unknown[];
+    testsStatus?: string;
+    blockedOn?: string;
+    nextStep?: string;
+  },
+) {
+  const { data, error } = await db()
+    .from('session_logs')
+    .insert({
+      project_id: input.projectId,
+      task_id: input.taskId ?? null,
+      agent_id: ctx.agentId,
+      summary: input.summary,
+      changes: input.changes ?? [],
+      tests_status: input.testsStatus ?? null,
+      blocked_on: input.blockedOn ?? null,
+      next_step: input.nextStep ?? null,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  await recordActivity({
+    projectId: input.projectId,
+    taskId: input.taskId,
+    ctx,
+    verb: 'session.logged',
+    summary: input.summary.slice(0, 80),
+  });
+  return data;
+}
+
+/** Staged: writes a proposed brain_diff and an open approval. Nothing is merged here. */
+export async function proposeBrainUpdate(
+  ctx: ActorContext,
+  input: {
+    projectId: string;
+    section: string;
+    operation: 'add' | 'update' | 'remove';
+    beforeText?: string;
+    afterText?: string;
+    evidenceSessionLogId?: string;
+  },
+) {
+  const diff = await db()
+    .from('brain_diffs')
+    .insert({
+      project_id: input.projectId,
+      section: input.section,
+      operation: input.operation,
+      before_text: input.beforeText ?? null,
+      after_text: input.afterText ?? null,
+      evidence_session_log_id: input.evidenceSessionLogId ?? null,
+      proposed_by_agent_id: ctx.agentId,
+      status: 'proposed',
+    })
+    .select()
+    .single();
+  if (diff.error) throw diff.error;
+
+  const approval = await db()
+    .from('approvals')
+    .insert({
+      project_id: input.projectId,
+      kind: 'brain_diff',
+      title: `Brain ${input.operation}: ${input.section}`,
+      payload: { brain_diff_id: diff.data.id },
+      requested_by_agent_id: ctx.agentId,
+      status: 'open',
+    })
+    .select()
+    .single();
+  if (approval.error) throw approval.error;
+
+  await recordActivity({
+    projectId: input.projectId,
+    ctx,
+    verb: 'brain.diff_proposed',
+    summary: `${input.operation} ${input.section}`,
+  });
+  return { brain_diff_id: diff.data.id, approval_id: approval.data.id, status: 'proposed' };
+}
+
+/** Staged: puts any proposed action in the human's Approvals inbox. Applies nothing. */
+export async function requestApproval(
+  ctx: ActorContext,
+  input: { projectId?: string; kind: string; title: string; payload?: Record<string, unknown> },
+) {
+  const { data, error } = await db()
+    .from('approvals')
+    .insert({
+      project_id: input.projectId ?? null,
+      kind: input.kind,
+      title: input.title,
+      payload: input.payload ?? {},
+      requested_by_agent_id: ctx.agentId,
+      status: 'open',
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  await recordActivity({
+    projectId: input.projectId,
+    ctx,
+    verb: 'approval.requested',
+    summary: input.title,
+  });
+  return { approval_id: data.id, status: 'open' };
+}
