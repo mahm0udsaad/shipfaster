@@ -7,3 +7,5 @@ node_modules
 dist
 coverage
 src/lib/db/database.types.ts
+*.tsbuildinfo
+next-env.d.ts
