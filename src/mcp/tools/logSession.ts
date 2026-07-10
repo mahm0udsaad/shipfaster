@@ -6,7 +6,7 @@ import { forbidden } from '../lib/errors';
 export const logSessionTool = defineTool({
   name: 'log_session',
   description: {
-    summary: 'File a structured work report at the end of a session: what changed, test status, blockers, next step.',
+    summary: 'File a structured work report at the end of a session: what changed, test status, blockers, next step, and tokens_spent.',
     useWhen: 'ending any work session — every Worker session MUST end with this; the Project Lead logs each triage run.',
     doNotUseWhen: 'mid-session for a quick note — use add_comment. This is the terminal report, not a running log.',
     sideEffects: 'inserts a session_logs row and an audited activity entry; feeds Brain Sync and staleness metrics.',
@@ -22,6 +22,7 @@ export const logSessionTool = defineTool({
       tests_status: z.string().optional(),
       blocked_on: z.string().optional(),
       next_step: z.string().optional(),
+      tokens_spent: z.number().int().min(0).optional(),
     })
     .strict(),
   allowedRoles: ['owner', 'project_lead', 'worker'],
@@ -42,6 +43,7 @@ export const logSessionTool = defineTool({
       testsStatus: input.tests_status,
       blockedOn: input.blocked_on,
       nextStep: input.next_step,
+      tokensSpent: input.tokens_spent,
     });
     return { session_log: session };
   },

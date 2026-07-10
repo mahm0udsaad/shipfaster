@@ -51,6 +51,11 @@ export default async function AgentsPage() {
                 {a.scopeNames.length > 0 ? ` · ${a.scopeNames.join(', ')}` : ' · all projects'}
               </div>
             </div>
+            {a.tokensSpent > 0 && (
+              <span className="rounded-md bg-[var(--color-agent)]/12 px-2 py-0.5 font-[var(--font-mono)] text-[11px] text-[var(--color-agent-3)]">
+                {a.tokensSpent >= 1000 ? `${(a.tokensSpent / 1000).toFixed(1)}k` : a.tokensSpent} tokens
+              </span>
+            )}
             <span className="text-[12px] text-[var(--color-muted)]">active {ago(a.last_active_at)}</span>
             {a.revoked_at ? (
               <span className="text-[12px] text-[var(--color-blocked-2)]">revoked</span>

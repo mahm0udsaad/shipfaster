@@ -52,6 +52,35 @@ export async function getProject(ctx: ActorContext, projectId: string) {
   return data;
 }
 
+export async function getProjectBySlug(slug: string) {
+  const { data, error } = await db()
+    .from('projects')
+    .select('*, clients(*), milestones(*)')
+    .eq('slug', slug)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function getProjectsOverviewData() {
+  const [projects, tasks, milestones, agents] = await Promise.all([
+    db().from('projects').select('id, name, slug, status, clients(name)').order('name'),
+    db().from('tasks').select('id, project_id, status'),
+    db().from('milestones').select('project_id, title, amount, currency, status'),
+    db().from('agents').select('project_scope, revoked_at'),
+  ]);
+  if (projects.error) throw projects.error;
+  if (tasks.error) throw tasks.error;
+  if (milestones.error) throw milestones.error;
+  if (agents.error) throw agents.error;
+  return {
+    projects: projects.data ?? [],
+    tasks: tasks.data ?? [],
+    milestones: milestones.data ?? [],
+    agents: agents.data ?? [],
+  };
+}
+
 // ---------- tasks ----------
 export type TaskFilter = {
   projectId?: string;
@@ -76,6 +105,37 @@ export async function getTask(projectScope: string[], taskId: string) {
   const { data, error } = await db().from('tasks').select('*').eq('id', taskId).maybeSingle();
   if (error) throw error;
   return data;
+}
+
+export async function getProjectBoardTasks(projectId: string) {
+  const { data, error } = await db()
+    .from('tasks')
+    .select('id, title, status, priority, assignee_agent_id, assignee_is_human, due_at, acceptance_criteria, tokens_spent, agents!tasks_assignee_agent_id_fkey(name), creator:agents!tasks_created_by_agent_id_fkey(name)')
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function getTaskDetailData(taskId: string) {
+  const task = await db()
+    .from('tasks')
+    .select(
+      '*, projects(name, slug), agents!tasks_assignee_agent_id_fkey(name), creator:agents!tasks_created_by_agent_id_fkey(name)',
+    )
+    .eq('id', taskId)
+    .maybeSingle();
+  if (task.error) throw task.error;
+  if (!task.data) return null;
+
+  const comments = await db()
+    .from('comments')
+    .select('body, actor_type, created_at, agents(name)')
+    .eq('task_id', taskId)
+    .order('created_at');
+  if (comments.error) throw comments.error;
+
+  return { task: task.data, comments: comments.data ?? [] };
 }
 
 // ---------- activity (append-only) ----------
@@ -110,6 +170,132 @@ export async function getBrain(projectId: string) {
     .order('section');
   if (error) throw error;
   return data ?? [];
+}
+
+export async function getBrainViewData(projectId: string) {
+  const [sections, diffs] = await Promise.all([
+    db().from('brain_sections').select('section, body, version, updated_at').eq('project_id', projectId),
+    db()
+      .from('brain_diffs')
+      .select('section, operation, after_text, status, agents(name)')
+      .eq('project_id', projectId)
+      .eq('status', 'proposed'),
+  ]);
+  if (sections.error) throw sections.error;
+  if (diffs.error) throw diffs.error;
+  return { sections: sections.data ?? [], proposed: diffs.data ?? [] };
+}
+
+export async function getProjectActivityData(projectId: string) {
+  const [activity, sessions] = await Promise.all([
+    db()
+      .from('activity')
+      .select('id, verb, summary, reason, actor_type, created_at, agents(name)')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false })
+      .limit(40),
+    db()
+      .from('session_logs')
+      .select('id, summary, changes, tests_status, blocked_on, next_step, created_at, agents(name)')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false })
+      .limit(15),
+  ]);
+  if (activity.error) throw activity.error;
+  if (sessions.error) throw sessions.error;
+  return { activity: activity.data ?? [], sessions: sessions.data ?? [] };
+}
+
+export async function getMoneyOverviewData() {
+  const { data, error } = await db()
+    .from('milestones')
+    .select('title, amount, currency, status, due_at, paid_at, projects(name, slug, clients(name))');
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function getClientsViewData() {
+  const [clients, projects, milestones] = await Promise.all([
+    db().from('clients').select('*').order('name'),
+    db().from('projects').select('id, name, slug, client_id'),
+    db().from('milestones').select('amount, status, project_id'),
+  ]);
+  if (clients.error) throw clients.error;
+  if (projects.error) throw projects.error;
+  if (milestones.error) throw milestones.error;
+  return {
+    clients: clients.data ?? [],
+    projects: projects.data ?? [],
+    milestones: milestones.data ?? [],
+  };
+}
+
+export async function getAgentsViewData() {
+  const [agents, projects, taskTokens, sessionTokens] = await Promise.all([
+    db().from('agents').select('*').order('created_at', { ascending: false }),
+    db().from('projects').select('id, name'),
+    db().from('tasks').select('created_by_agent_id, tokens_spent').gt('tokens_spent', 0),
+    db().from('session_logs').select('agent_id, tokens_spent').gt('tokens_spent', 0),
+  ]);
+  if (agents.error) throw agents.error;
+  if (projects.error) throw projects.error;
+  if (taskTokens.error) throw taskTokens.error;
+  if (sessionTokens.error) throw sessionTokens.error;
+  return {
+    agents: agents.data ?? [],
+    projects: projects.data ?? [],
+    taskTokens: taskTokens.data ?? [],
+    sessionTokens: sessionTokens.data ?? [],
+  };
+}
+
+export async function getPendingApprovalCountData(): Promise<number> {
+  const { count, error } = await db()
+    .from('approvals')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'open');
+  if (error) throw error;
+  return count ?? 0;
+}
+
+export async function getTodayDataModel() {
+  const [approvals, due, blocked, projects] = await Promise.all([
+    db()
+      .from('approvals')
+      .select('id, kind, title, status, requested_by_agent_id, project_id, agents(name), projects(name)')
+      .eq('status', 'open')
+      .order('created_at', { ascending: false })
+      .limit(5),
+    db()
+      .from('tasks')
+      .select('id, title, status, due_at, project_id, projects(name)')
+      .not('status', 'in', '(done,cancelled)')
+      .not('due_at', 'is', null)
+      .lte('due_at', new Date(Date.now() + 3 * 864e5).toISOString())
+      .order('due_at', { ascending: true })
+      .limit(8),
+    db()
+      .from('tasks')
+      .select('id, title, status, project_id, assignee_agent_id, agents!tasks_assignee_agent_id_fkey(name), projects(name)')
+      .eq('status', 'blocked')
+      .limit(8),
+    db().from('projects').select('id, name, slug'),
+  ]);
+  if (approvals.error) throw approvals.error;
+  if (due.error) throw due.error;
+  if (blocked.error) throw blocked.error;
+  if (projects.error) throw projects.error;
+
+  const withTasks = await db().from('tasks').select('project_id').not('status', 'in', '(done,cancelled)');
+  if (withTasks.error) throw withTasks.error;
+
+  return {
+    approvals: approvals.data ?? [],
+    due: due.data ?? [],
+    blocked: blocked.data ?? [],
+    projects: projects.data ?? [],
+    openTaskProjectIds: (withTasks.data ?? []).map((t: any) => t.project_id),
+  };
 }
 
 // ---------- project lead triage data gathering ----------
@@ -256,6 +442,7 @@ export async function createTask(
     parentTaskId?: string;
     priority?: string;
     dueAt?: string;
+    tokensSpent?: number;
   },
 ) {
   const { data, error } = await db()
@@ -268,6 +455,8 @@ export async function createTask(
       parent_task_id: input.parentTaskId ?? null,
       priority: input.priority ?? 'medium',
       due_at: input.dueAt ?? null,
+      created_by_agent_id: ctx.agentId,
+      tokens_spent: Math.max(0, Math.round(input.tokensSpent ?? 0)),
     })
     .select()
     .single();
@@ -278,6 +467,7 @@ export async function createTask(
     ctx,
     verb: 'task.created',
     summary: input.title,
+    metadata: input.tokensSpent ? { tokens_spent: input.tokensSpent } : undefined,
   });
   return data;
 }
@@ -330,6 +520,7 @@ export async function logSession(
     testsStatus?: string;
     blockedOn?: string;
     nextStep?: string;
+    tokensSpent?: number;
   },
 ) {
   const { data, error } = await db()
@@ -343,6 +534,7 @@ export async function logSession(
       tests_status: input.testsStatus ?? null,
       blocked_on: input.blockedOn ?? null,
       next_step: input.nextStep ?? null,
+      tokens_spent: Math.max(0, Math.round(input.tokensSpent ?? 0)),
     })
     .select()
     .single();

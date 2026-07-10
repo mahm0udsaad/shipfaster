@@ -26,6 +26,18 @@ export async function TaskDrawer({ taskId, slug }: { taskId: string; slug: strin
 
         <h2 className="font-[var(--font-display)] text-xl font-bold text-[var(--color-ink)]">{task.title}</h2>
 
+        {(task.creator?.name || task.tokens_spent > 0) && (
+          <div className="mt-2 flex items-center gap-2 text-[12px] text-[var(--color-faint)]">
+            <span>Created by</span>
+            <ActorTag agent={task.creator?.name} human={task.creator?.name ? null : 'You'} />
+            {task.tokens_spent > 0 && (
+              <span className="rounded-md bg-[var(--color-agent)]/12 px-2 py-0.5 font-[var(--font-mono)] text-[11px] text-[var(--color-agent-3)]">
+                {task.tokens_spent.toLocaleString()} tokens
+              </span>
+            )}
+          </div>
+        )}
+
         <div className="mt-4 grid grid-cols-3 gap-3 text-[12px]">
           <div>
             <div className="text-[var(--color-faint)]">Assignee</div>

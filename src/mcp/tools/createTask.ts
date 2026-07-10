@@ -6,7 +6,7 @@ import { forbidden, validation } from '../lib/errors';
 export const createTaskTool = defineTool({
   name: 'create_task',
   description: {
-    summary: 'Create a task, or a subtask under an existing task.',
+    summary: 'Create a task, or a subtask under an existing task; pass tokens_spent to record what creating it cost you.',
     useWhen: 'the Project Lead is breaking down work, or a Worker is splitting its assigned task into subtasks.',
     doNotUseWhen: 'you only need to change an existing task — use update_task. Workers may NOT create top-level tasks.',
     sideEffects: 'inserts a tasks row and an audited activity entry attributed to the caller.',
@@ -22,6 +22,7 @@ export const createTaskTool = defineTool({
       parent_task_id: z.string().uuid().optional(),
       priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
       due_at: z.string().datetime().optional(),
+      tokens_spent: z.number().int().min(0).optional(),
     })
     .strict(),
   allowedRoles: ['owner', 'project_lead', 'worker'],
@@ -45,6 +46,7 @@ export const createTaskTool = defineTool({
       parentTaskId: input.parent_task_id,
       priority: input.priority,
       dueAt: input.due_at,
+      tokensSpent: input.tokens_spent,
     });
     return { task };
   },
