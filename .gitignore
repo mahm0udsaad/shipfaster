@@ -10,3 +10,4 @@ src/lib/db/database.types.ts
 *.tsbuildinfo
 next-env.d.ts
 .mcp.json
+.codex-tokens.local
