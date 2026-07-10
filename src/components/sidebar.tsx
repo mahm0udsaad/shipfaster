@@ -40,7 +40,13 @@ export function Sidebar({
 
   function toggleTheme() {
     const el = document.documentElement;
-    el.dataset.theme = el.dataset.theme === 'light' ? 'dark' : 'light';
+    const next = el.dataset.theme === 'light' ? 'dark' : 'light';
+    el.dataset.theme = next;
+    try {
+      localStorage.setItem('theme', next);
+    } catch {
+      /* ignore */
+    }
   }
 
   return (

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { ActorTag, StatusPill } from '../actor';
 import { getTaskDetail } from '../../lib/views';
+import { TaskActions } from './task-actions';
 
 export async function TaskDrawer({ taskId, slug }: { taskId: string; slug: string }) {
   const detail = await getTaskDetail(taskId);
@@ -99,16 +100,8 @@ export async function TaskDrawer({ taskId, slug }: { taskId: string; slug: strin
           </div>
         )}
 
-        <div className="mt-6 flex items-center gap-2 border-t border-[var(--color-line)] pt-4">
-          <button className="rounded-lg bg-[var(--color-success)] px-4 py-2 text-[13px] font-semibold text-black">
-            Mark Done
-          </button>
-          <button className="rounded-lg border border-[var(--color-line-2)] px-4 py-2 text-[13px] font-semibold text-[var(--color-ink-2)]">
-            Reopen
-          </button>
-          <span className="ml-auto text-[11px] text-[var(--color-faint)]">
-            Only humans mark a task Done.
-          </span>
+        <div className="mt-6 border-t border-[var(--color-line)] pt-4">
+          <TaskActions taskId={task.id} slug={slug} status={task.status} />
         </div>
       </aside>
     </>
