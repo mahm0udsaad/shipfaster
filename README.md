@@ -14,15 +14,27 @@ for the product/agent architecture.
 - Next.js (App Router) dashboard + a Node MCP server, sharing one Supabase Postgres database.
 - All DB access goes through `src/lib/db/repository.ts` — nothing else touches Supabase directly.
 
-## Status — M0 (Foundation) complete
-- ✅ 11-table schema (`supabase/migrations/0001_core_schema.sql`)
-- ✅ Data-access layer (`src/lib/db/repository.ts`)
-- ✅ MCP server + auth + typed errors (`src/mcp/`)
-- ✅ 4 read tools: `list_projects`, `get_project`, `list_tasks`, `search`
-- ✅ Description-lint contract + tests (`npm run lint:tools`, `npm test`)
-- ⏳ Awaiting a Supabase project to apply the migration against.
+## Status — M0 + M1 complete, live on Supabase
+- ✅ 11-table schema applied to the live Supabase project **`ship-faster`** (ref `pirvbnagoqcdnqhkohto`, eu-central-1)
+- ✅ 6 client projects seeded (bookitfly, kafel, whatsapp-cs, mr-dashboard, multigates, ingaz), each with 6 brain sections
+- ✅ Data-access layer (`src/lib/db/repository.ts`) — reads + audited writes
+- ✅ MCP server + token auth + typed errors (`src/mcp/`)
+- ✅ **All 12 MCP tools** (6 read, 4 write, 2 staged) — role-scoped per Section 19
+- ✅ Deterministic Context Pack assembler (`src/lib/context/pack.ts`)
+- ✅ Description-lint contract + 34 tests + generated DB types
+- ✅ **Live end-to-end verified** (`scripts/verify-live.ts`): auth → tool → repository → Postgres
 
-Next: M1 (core loop — Context Pack, Session Log, Brain, write tools). See the plan.
+### Before running against the live DB
+Fill `SUPABASE_SERVICE_ROLE_KEY` in `.env.local` (from the Supabase dashboard → Project Settings → API).
+It is intentionally NOT stored here and cannot be fetched via MCP.
+
+### ⚠️ Security note — RLS is disabled (expected for MVP)
+All 11 tables have Row Level Security **off**. The architecture keeps the service-role key
+server-side only (repository layer) and never ships the anon key with table access to the
+browser, so this is acceptable for the local/personal MVP. **Do not** expose the anon key to
+untrusted clients until M7 adds RLS policies enforcing the Section 19 permission matrix.
+
+Next: M2 (dashboard — Today / Board / Brain / Approvals / Money / Agents). See the plan.
 
 ## Develop
 ```bash
