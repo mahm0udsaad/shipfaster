@@ -12,6 +12,7 @@ import { Activity } from '../../../../src/components/project/activity';
 import { Milestones } from '../../../../src/components/project/milestones';
 import { TaskDrawer } from '../../../../src/components/project/task-drawer';
 import { NewAgentButton } from '../../../../src/components/project/new-agent-modal';
+import { HandoffButton } from '../../../../src/components/project/handoff-modal';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,6 +59,7 @@ export default async function ProjectPage({
               {money(owed, currency)} owed · {money(paid, currency)} paid
             </span>
           )}
+          <HandoffButton projectId={project.id} slug={slug} projectName={project.name} />
           <NewAgentButton projectId={project.id} projectName={project.name} />
         </div>
       </div>

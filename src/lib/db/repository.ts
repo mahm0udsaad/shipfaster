@@ -443,6 +443,7 @@ export async function createTask(
     priority?: string;
     dueAt?: string;
     tokensSpent?: number;
+    assigneeAgentId?: string | null;
   },
 ) {
   const { data, error } = await db()
@@ -457,6 +458,7 @@ export async function createTask(
       due_at: input.dueAt ?? null,
       created_by_agent_id: ctx.agentId,
       tokens_spent: Math.max(0, Math.round(input.tokensSpent ?? 0)),
+      assignee_agent_id: input.assigneeAgentId ?? null,
     })
     .select()
     .single();
@@ -489,6 +491,19 @@ export async function updateTask(
     reason,
   });
   return data;
+}
+
+/** Agents that may be assigned work on a project: scoped to it (or all-projects), not revoked. */
+export async function getAssignableAgents(projectId: string) {
+  const { data, error } = await db()
+    .from('agents')
+    .select('id, name, role, project_scope')
+    .is('revoked_at', null)
+    .order('name');
+  if (error) throw error;
+  return (data ?? []).filter(
+    (a: any) => (a.project_scope ?? []).length === 0 || a.project_scope.includes(projectId),
+  );
 }
 
 /** The calling agent's own identity, for self-introduction. */
