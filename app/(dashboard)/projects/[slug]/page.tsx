@@ -11,6 +11,7 @@ import { Brain } from '../../../../src/components/project/brain';
 import { Activity } from '../../../../src/components/project/activity';
 import { Milestones } from '../../../../src/components/project/milestones';
 import { TaskDrawer } from '../../../../src/components/project/task-drawer';
+import { NewAgentButton } from '../../../../src/components/project/new-agent-modal';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,11 +52,14 @@ export default async function ProjectPage({
       <div className="mb-5 flex items-center gap-3">
         <h1 className="font-[var(--font-display)] text-2xl font-bold text-[var(--color-ink)]">{project.name}</h1>
         <span className="text-[13px] text-[var(--color-faint)]">{(project as any).clients?.name ?? ''}</span>
-        {(owed > 0 || paid > 0) && (
-          <span className="ml-auto rounded-lg border border-[var(--color-line)] px-3 py-1 text-[12px] text-[var(--color-ink-2)]">
-            {money(owed, currency)} owed · {money(paid, currency)} paid
-          </span>
-        )}
+        <div className="ml-auto flex items-center gap-3">
+          {(owed > 0 || paid > 0) && (
+            <span className="rounded-lg border border-[var(--color-line)] px-3 py-1 text-[12px] text-[var(--color-ink-2)]">
+              {money(owed, currency)} owed · {money(paid, currency)} paid
+            </span>
+          )}
+          <NewAgentButton projectId={project.id} projectName={project.name} />
+        </div>
       </div>
 
       {/* tabs */}
