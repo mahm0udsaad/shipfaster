@@ -3,14 +3,14 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-const NAV = [
+const NAV: { href: string; label: string; badgeKey?: 'approvals' }[] = [
   { href: '/today', label: 'Today' },
   { href: '/approvals', label: 'Approvals', badgeKey: 'approvals' },
   { href: '/projects', label: 'Projects' },
   { href: '/clients', label: 'Clients' },
   { href: '/money', label: 'Money' },
   { href: '/agents', label: 'Agents' },
-] as const;
+];
 
 function Spark() {
   return (
