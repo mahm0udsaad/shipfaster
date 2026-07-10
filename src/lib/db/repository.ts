@@ -32,6 +32,16 @@ export async function listProjects(ctx: ActorContext) {
   return data ?? [];
 }
 
+export async function getAgentByName(name: string) {
+  const { data, error } = await db()
+    .from('agents')
+    .select('id, name, role, project_scope, revoked_at')
+    .eq('name', name)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
 export async function getProject(ctx: ActorContext, projectId: string) {
   const { data, error } = await db()
     .from('projects')
@@ -100,6 +110,66 @@ export async function getBrain(projectId: string) {
     .order('section');
   if (error) throw error;
   return data ?? [];
+}
+
+// ---------- project lead triage data gathering ----------
+export async function getProjectTriageData(ctx: ActorContext, projectId: string) {
+  if (!inScope(ctx, projectId)) throw new Error('project out of actor scope');
+
+  const [project, tasks, activity, sessions, brain, milestones] = await Promise.all([
+    db().from('projects').select('id, name, slug, status, updated_at, clients(name)').eq('id', projectId).maybeSingle(),
+    db()
+      .from('tasks')
+      .select(
+        'id, project_id, title, status, priority, assignee_agent_id, assignee_is_human, due_at, updated_at, created_at, human_touched_at, acceptance_criteria',
+      )
+      .eq('project_id', projectId)
+      .order('updated_at', { ascending: false }),
+    db()
+      .from('activity')
+      .select('id, project_id, task_id, verb, summary, actor_type, created_at')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false })
+      .limit(40),
+    db()
+      .from('session_logs')
+      .select('id, project_id, task_id, summary, blocked_on, next_step, created_at')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false })
+      .limit(40),
+    db()
+      .from('brain_sections')
+      .select('id, project_id, section, body, version, updated_at')
+      .eq('project_id', projectId)
+      .order('section'),
+    db()
+      .from('milestones')
+      .select('id, project_id, title, status, due_at, amount, currency')
+      .eq('project_id', projectId)
+      .order('due_at', { ascending: true }),
+  ]);
+
+  if (project.error) throw project.error;
+  if (tasks.error) throw tasks.error;
+  if (activity.error) throw activity.error;
+  if (sessions.error) throw sessions.error;
+  if (brain.error) throw brain.error;
+  if (milestones.error) throw milestones.error;
+  if (!project.data) throw new Error('project not found');
+
+  return {
+    project: project.data,
+    tasks: tasks.data ?? [],
+    activity: activity.data ?? [],
+    sessions: sessions.data ?? [],
+    brain: brain.data ?? [],
+    milestones: milestones.data ?? [],
+  };
+}
+
+export async function listProjectTriageData(ctx: ActorContext) {
+  const projects = await listProjects(ctx);
+  return Promise.all(projects.map((project: any) => getProjectTriageData(ctx, project.id)));
 }
 
 // ---------- search (tasks + brain + activity) ----------
@@ -231,7 +301,7 @@ export async function updateTask(
   return data;
 }
 
-export async function addComment(ctx: ActorContext, taskId: string, body: string) {
+export async function addComment(ctx: ActorContext, taskId: string, body: string, reason?: string) {
   const { data, error } = await db()
     .from('comments')
     .insert({ task_id: taskId, actor_type: ctx.actorType, actor_agent_id: ctx.agentId, body })
@@ -245,6 +315,7 @@ export async function addComment(ctx: ActorContext, taskId: string, body: string
     ctx,
     verb: 'comment.added',
     summary: body.slice(0, 80),
+    reason,
   });
   return data;
 }

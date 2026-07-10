@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "mcp": "node --env-file=.env.local --import tsx/esm src/mcp/server.ts",
-    "lint:tools": "tsx scripts/lint-tool-descriptions.ts",
+    "lint:tools": "node --import tsx/esm scripts/lint-tool-descriptions.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
