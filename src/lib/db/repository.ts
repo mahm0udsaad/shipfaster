@@ -337,6 +337,133 @@ export async function proposeBrainUpdate(
   return { brain_diff_id: diff.data.id, approval_id: approval.data.id, status: 'proposed' };
 }
 
+// ---------- approvals (human-in-the-loop) ----------
+export type ApprovalCard = {
+  id: string;
+  kind: string;
+  title: string;
+  payload: any;
+  created_at: string;
+  agentName: string | null;
+  projectName: string | null;
+  diff: { section: string; before: string | null; after: string | null; evidence: string | null } | null;
+};
+
+export async function getOpenApprovals(): Promise<ApprovalCard[]> {
+  const db = serviceClient();
+  const { data, error } = await db
+    .from('approvals')
+    .select('id, kind, title, payload, created_at, project_id, agents(name), projects(name)')
+    .eq('status', 'open')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  const rows = data ?? [];
+
+  const diffIds = rows.map((r: any) => r.payload?.brain_diff_id).filter(Boolean);
+  const diffs: Record<string, any> = {};
+  if (diffIds.length) {
+    const { data: d } = await db.from('brain_diffs').select('*').in('id', diffIds);
+    for (const x of d ?? []) diffs[x.id] = x;
+  }
+
+  return rows.map((a: any) => {
+    let diff = null;
+    if (a.kind === 'brain_diff') {
+      const bd = a.payload?.brain_diff_id ? diffs[a.payload.brain_diff_id] : null;
+      diff = bd
+        ? { section: bd.section, before: bd.before_text, after: bd.after_text, evidence: bd.evidence_session_log_id }
+        : {
+            section: a.payload?.section ?? null,
+            before: a.payload?.before ?? null,
+            after: a.payload?.after ?? null,
+            evidence: a.payload?.evidence ?? null,
+          };
+    }
+    return {
+      id: a.id,
+      kind: a.kind,
+      title: a.title,
+      payload: a.payload,
+      created_at: a.created_at,
+      agentName: a.agents?.name ?? null,
+      projectName: a.projects?.name ?? null,
+      diff,
+    };
+  });
+}
+
+/**
+ * Resolve an approval. This is the ONLY place agent proposals become real.
+ * Approving a brain_diff applies it to the Brain (bumping the section version) and
+ * marks the diff merged. Rejecting marks it rejected. Nothing else is auto-sent.
+ */
+export async function resolveApproval(
+  ctx: ActorContext,
+  approvalId: string,
+  decision: 'approve' | 'reject',
+  note?: string,
+) {
+  const db = serviceClient();
+  const nowIso = new Date().toISOString();
+  const { data: appr, error } = await db.from('approvals').select('*').eq('id', approvalId).maybeSingle();
+  if (error) throw error;
+  if (!appr) throw new Error('approval not found');
+  if (appr.status !== 'open') return { status: appr.status };
+
+  if (appr.kind === 'brain_diff') {
+    let section: string | null = appr.payload?.section ?? null;
+    let after: string | null = appr.payload?.after ?? null;
+    let diffId: string | null = appr.payload?.brain_diff_id ?? null;
+    if (diffId) {
+      const { data: bd } = await db.from('brain_diffs').select('*').eq('id', diffId).maybeSingle();
+      if (bd) {
+        section = bd.section;
+        after = bd.after_text;
+      }
+    }
+    if (decision === 'approve' && section && after != null) {
+      const { data: existing } = await db
+        .from('brain_sections')
+        .select('id, version')
+        .eq('project_id', appr.project_id)
+        .eq('section', section)
+        .maybeSingle();
+      if (existing) {
+        await db
+          .from('brain_sections')
+          .update({ body: after, version: existing.version + 1, updated_at: nowIso })
+          .eq('id', existing.id);
+      } else {
+        await db.from('brain_sections').insert({ project_id: appr.project_id, section, body: after });
+      }
+    }
+    if (diffId) {
+      await db
+        .from('brain_diffs')
+        .update({ status: decision === 'approve' ? 'merged' : 'rejected', resolved_at: nowIso })
+        .eq('id', diffId);
+    }
+  }
+
+  await db
+    .from('approvals')
+    .update({
+      status: decision === 'approve' ? 'approved' : 'rejected',
+      resolved_at: nowIso,
+      resolution_note: note ?? null,
+    })
+    .eq('id', approvalId);
+
+  await recordActivity({
+    projectId: appr.project_id,
+    ctx,
+    verb: `approval.${decision === 'approve' ? 'approved' : 'rejected'}`,
+    summary: appr.title,
+  });
+
+  return { status: decision === 'approve' ? 'approved' : 'rejected' };
+}
+
 /** Staged: puts any proposed action in the human's Approvals inbox. Applies nothing. */
 export async function requestApproval(
   ctx: ActorContext,
