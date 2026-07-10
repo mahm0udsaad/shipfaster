@@ -50,7 +50,7 @@ export function NewAgentButton({ projectId, projectName }: { projectId: string; 
                   Brief a new agent on {projectName}
                 </h2>
                 <p className="text-[12px] text-[var(--color-muted)]">
-                  Paste this into a fresh Claude Code / Cursor / Codex session — it orients the agent and lists the open work.
+                  Paste this into a fresh Claude Code / Cursor / Codex session — it orients the agent, which then discovers the project and drives the work itself.
                 </p>
               </div>
               <button onClick={() => setOpen(false)} className="text-[var(--color-faint)] hover:text-[var(--color-ink)]">
