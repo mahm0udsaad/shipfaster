@@ -3,9 +3,13 @@ import { getPendingApprovalCount } from '../../src/lib/dashboard';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pending = await getPendingApprovalCount();
+  const owner = {
+    name: process.env.OWNER_NAME ?? 'Mahmoud',
+    plan: process.env.OWNER_PLAN ?? 'solo · free',
+  };
   return (
     <div className="flex min-h-dvh bg-[var(--color-base)]">
-      <Sidebar pendingApprovals={pending} />
+      <Sidebar pendingApprovals={pending} owner={owner} />
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-14 items-center gap-3 border-b border-[var(--color-line)] px-6">
           <div className="flex-1">

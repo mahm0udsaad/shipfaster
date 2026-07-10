@@ -23,8 +23,20 @@ function Spark() {
   );
 }
 
-export function Sidebar({ pendingApprovals }: { pendingApprovals: number }) {
+export function Sidebar({
+  pendingApprovals,
+  owner,
+}: {
+  pendingApprovals: number;
+  owner: { name: string; plan: string };
+}) {
   const path = usePathname();
+  const initials = owner.name
+    .split(' ')
+    .map((p) => p[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 
   function toggleTheme() {
     const el = document.documentElement;
@@ -74,11 +86,11 @@ export function Sidebar({ pendingApprovals }: { pendingApprovals: number }) {
         </button>
         <div className="flex items-center gap-2.5 rounded-lg border border-[var(--color-line)] px-3 py-2.5">
           <span className="grid size-8 place-items-center rounded-full bg-[var(--color-agent)]/20 text-[12px] font-bold text-[var(--color-agent-3)]">
-            AR
+            {initials}
           </span>
           <div className="leading-tight">
-            <div className="text-[13px] font-semibold text-[var(--color-ink)]">Alex Rivera</div>
-            <div className="text-[11px] text-[var(--color-faint)]">solo · free</div>
+            <div className="text-[13px] font-semibold text-[var(--color-ink)]">{owner.name}</div>
+            <div className="text-[11px] text-[var(--color-faint)]">{owner.plan}</div>
           </div>
         </div>
       </div>
