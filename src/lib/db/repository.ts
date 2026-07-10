@@ -491,6 +491,40 @@ export async function updateTask(
   return data;
 }
 
+/** The calling agent's own identity, for self-introduction. */
+export async function getSelf(ctx: ActorContext) {
+  if (!ctx.agentId) {
+    return { agentId: null, name: 'owner', role: ctx.role, projects: [] as string[] };
+  }
+  const { data } = await db()
+    .from('agents')
+    .select('name, role, project_scope')
+    .eq('id', ctx.agentId)
+    .maybeSingle();
+  let projects: string[] = [];
+  if (data?.project_scope?.length) {
+    const p = await db().from('projects').select('name').in('id', data.project_scope);
+    projects = (p.data ?? []).map((x: any) => x.name);
+  }
+  return { agentId: ctx.agentId, name: data?.name ?? null, role: ctx.role, projects };
+}
+
+/** An agent renames itself (e.g. a friendlier name the user chose). */
+export async function renameSelf(ctx: ActorContext, newName: string) {
+  if (!ctx.agentId) throw new Error('only agents can rename themselves');
+  const clean = newName.trim();
+  if (!clean) throw new Error('name is empty');
+  const { data, error } = await db()
+    .from('agents')
+    .update({ name: clean })
+    .eq('id', ctx.agentId)
+    .select('name')
+    .single();
+  if (error) throw error;
+  await recordActivity({ ctx, verb: 'agent.renamed', summary: `renamed self to ${clean}` });
+  return data;
+}
+
 export async function addComment(ctx: ActorContext, taskId: string, body: string, reason?: string) {
   const { data, error } = await db()
     .from('comments')
