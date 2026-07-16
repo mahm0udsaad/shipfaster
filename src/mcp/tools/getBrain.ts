@@ -18,7 +18,7 @@ export const getBrainTool = defineTool({
   mutates: false,
   async handler({ ctx, input }) {
     if (!inScope(ctx, input.project_id)) throw forbidden('project out of token scope');
-    const sections = await getBrain(input.project_id);
+    const sections = await getBrain(ctx, input.project_id);
     return { sections };
   },
 });

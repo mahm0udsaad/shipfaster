@@ -27,7 +27,7 @@ export const getContextPackTool = defineTool({
   mutates: false,
   async handler({ ctx, input }) {
     if (!inScope(ctx, input.project_id)) throw forbidden('project out of token scope');
-    const data = await getContextPackData(input.project_id, input.task_id);
+    const data = await getContextPackData(ctx, input.project_id, input.task_id);
     const infraHint = input.task_id
       ? INFRA.test(`${data.focusedTask?.title ?? ''} ${data.focusedTask?.description ?? ''}`)
       : false;

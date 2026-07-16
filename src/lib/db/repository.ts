@@ -19,7 +19,65 @@ function db() {
   return serviceClient();
 }
 
-/** True if the actor may see/act on a given project. */
+/**
+ * Every table that carries an account_id anchor (migration 0004). Listing them as a type
+ * rather than accepting `string` means a new tenant table cannot be read through the
+ * scoped helpers until it is added here — the omission surfaces as a type error.
+ */
+export type TenantTable =
+  | 'clients'
+  | 'projects'
+  | 'agents'
+  | 'tasks'
+  | 'milestones'
+  | 'comments'
+  | 'activity'
+  | 'session_logs'
+  | 'brain_sections'
+  | 'brain_diffs'
+  | 'approvals'
+  | 'notifications';
+
+/**
+ * The ONLY way this file reads a tenant table.
+ *
+ * Everything here runs on the service-role key, which bypasses RLS — so RLS is
+ * defense-in-depth, and *this* filter is the thing actually keeping accounts apart.
+ * Routing reads through a helper that cannot be constructed without an ActorContext
+ * makes "I forgot the account filter" a missing-argument type error instead of a silent
+ * cross-tenant read. Do not call db().from(<a TenantTable>) directly below this line.
+ */
+function scopedSelect<T extends TenantTable, C extends string = '*'>(
+  ctx: ActorContext,
+  table: T,
+  columns?: C,
+) {
+  // `columns` stays generic so supabase-js still infers row shapes from the literal select
+  // string; widening it to `string` collapses every result to GenericStringError.
+  return db()
+    .from(table)
+    .select((columns ?? '*') as C)
+    .eq('account_id', ctx.accountId);
+}
+
+/** As scopedSelect, for writes: an UPDATE can never escape the actor's account. */
+function scopedUpdate<T extends TenantTable>(
+  ctx: ActorContext,
+  table: T,
+  patch: Record<string, unknown>,
+) {
+  return db().from(table).update(patch as never).eq('account_id', ctx.accountId);
+}
+
+/**
+ * True if the actor may see/act on a given project.
+ *
+ * NOTE: this answers "is this project within my *project scope*" only — it says nothing
+ * about tenancy. An owner has an empty projectScope, so this returns true for ANY id,
+ * including another account's. It is safe only because every query that consumes the
+ * result is account-filtered via scopedSelect/scopedUpdate; on its own it is not an
+ * authorization check. Never gate a raw db() call on this alone.
+ */
 export function inScope(ctx: ActorContext, projectId: string): boolean {
   return ctx.projectScope.length === 0 || ctx.projectScope.includes(projectId);
 }
@@ -46,17 +104,22 @@ export async function resolveSoleAccountId(): Promise<string> {
 
 // ---------- projects ----------
 export async function listProjects(ctx: ActorContext) {
-  let q = db().from('projects').select('*, clients(name)').order('created_at', { ascending: false });
+  let q = scopedSelect(ctx, 'projects', '*, clients(name)').order('created_at', { ascending: false });
   if (ctx.projectScope.length > 0) q = q.in('id', ctx.projectScope);
   const { data, error } = await q;
   if (error) throw error;
   return data ?? [];
 }
 
-export async function getAgentByName(name: string) {
+/**
+ * Agent names are unique per account (0004), so a bare name lookup is ambiguous across
+ * accounts — the caller must say which account is asking.
+ */
+export async function getAgentByName(accountId: string, name: string) {
   const { data, error } = await db()
     .from('agents')
     .select('id, name, role, account_id, project_scope, revoked_at')
+    .eq('account_id', accountId)
     .eq('name', name)
     .maybeSingle();
   if (error) throw error;
@@ -64,21 +127,38 @@ export async function getAgentByName(name: string) {
 }
 
 export async function getProject(ctx: ActorContext, projectId: string) {
-  const { data, error } = await db()
-    .from('projects')
-    .select('*, clients(*), milestones(*)')
+  if (!inScope(ctx, projectId)) return null;
+  const { data, error } = await scopedSelect(ctx, 'projects', '*, clients(*), milestones(*)')
     .eq('id', projectId)
     .maybeSingle();
   if (error) throw error;
   return data;
 }
 
+/**
+ * Resolve a project the actor may actually act on, or throw. Every write that hangs a row
+ * off a project_id must pass through here first.
+ *
+ * Stamping ctx.accountId on a row whose project_id points into another account would mint
+ * a row that passes every later account filter while describing someone else's project —
+ * mixed-tenancy data that no amount of read scoping can untangle afterwards.
+ */
+export async function requireProject(ctx: ActorContext, projectId: string) {
+  if (!inScope(ctx, projectId)) throw new Error('project out of actor scope');
+  const { data, error } = await scopedSelect(ctx, 'projects', 'id, account_id')
+    .eq('id', projectId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('project not found');
+  return data;
+}
+
 // ---------- milestones (money-aware) ----------
 export type MilestoneStatus = 'pending' | 'invoiced' | 'paid';
 
-export async function getMilestone(projectScope: string[], milestoneId: string) {
-  let q = db().from('milestones').select('*').eq('id', milestoneId);
-  if (projectScope.length > 0) q = q.in('project_id', projectScope);
+export async function getMilestone(ctx: ActorContext, milestoneId: string) {
+  let q = scopedSelect(ctx, 'milestones').eq('id', milestoneId);
+  if (ctx.projectScope.length > 0) q = q.in('project_id', ctx.projectScope);
   const { data, error } = await q.maybeSingle();
   if (error) throw error;
   return data;
@@ -96,6 +176,7 @@ export async function createMilestone(
     dueAt?: string;
   },
 ) {
+  await requireProject(ctx, input.projectId);
   const { data, error } = await db()
     .from('milestones')
     .insert({
@@ -143,9 +224,7 @@ export async function updateMilestone(
     // Keep paid_at consistent with status so owed/paid math stays honest.
     update.paid_at = patch.status === 'paid' ? new Date().toISOString() : null;
   }
-  const { data, error } = await db()
-    .from('milestones')
-    .update(update)
+  const { data, error } = await scopedUpdate(ctx, 'milestones', update)
     .eq('id', milestoneId)
     .select()
     .single();
@@ -160,13 +239,13 @@ export async function updateMilestone(
   return data;
 }
 
-export async function getProjectBySlug(slug: string) {
-  const { data, error } = await db()
-    .from('projects')
-    .select('*, clients(*), milestones(*)')
+/** Slugs are unique per account (0004) — unscoped, this would return an arbitrary tenant's project. */
+export async function getProjectBySlug(ctx: ActorContext, slug: string) {
+  const { data, error } = await scopedSelect(ctx, 'projects', '*, clients(*), milestones(*)')
     .eq('slug', slug)
     .maybeSingle();
   if (error) throw error;
+  if (!data || !inScope(ctx, data.id)) return null;
   return data;
 }
 
@@ -191,8 +270,13 @@ export async function getClientByName(accountId: string, name: string) {
   return data;
 }
 
-export async function getProjectBySlugRaw(slug: string) {
-  const { data, error } = await db().from('projects').select('id, slug').eq('slug', slug).maybeSingle();
+/**
+ * Slug-clash check for project creation. Account-scoped on purpose: two accounts may each
+ * run a project called "bookitfly", so a global clash check would wrongly reject the
+ * second one — and leak that the first exists.
+ */
+export async function getProjectBySlugRaw(ctx: ActorContext, slug: string) {
+  const { data, error } = await scopedSelect(ctx, 'projects', 'id, slug').eq('slug', slug).maybeSingle();
   if (error) throw error;
   return data;
 }
@@ -248,12 +332,12 @@ export async function createProject(
   return data;
 }
 
-export async function getProjectsOverviewData() {
+export async function getProjectsOverviewData(ctx: ActorContext) {
   const [projects, tasks, milestones, agents] = await Promise.all([
-    db().from('projects').select('id, name, slug, status, clients(name)').order('name'),
-    db().from('tasks').select('id, project_id, status'),
-    db().from('milestones').select('project_id, title, amount, currency, status'),
-    db().from('agents').select('project_scope, revoked_at'),
+    scopedSelect(ctx, 'projects', 'id, name, slug, status, clients(name)').order('name'),
+    scopedSelect(ctx, 'tasks', 'id, project_id, status'),
+    scopedSelect(ctx, 'milestones', 'project_id, title, amount, currency, status'),
+    scopedSelect(ctx, 'agents', 'project_scope, revoked_at'),
   ]);
   if (projects.error) throw projects.error;
   if (tasks.error) throw tasks.error;
@@ -276,7 +360,7 @@ export type TaskFilter = {
 };
 
 export async function listTasks(ctx: ActorContext, filter: TaskFilter = {}) {
-  let q = db().from('tasks').select('*').order('updated_at', { ascending: false });
+  let q = scopedSelect(ctx, 'tasks').order('updated_at', { ascending: false });
   if (filter.projectId) q = q.eq('project_id', filter.projectId);
   if (filter.status) q = q.eq('status', filter.status);
   if (filter.assigneeAgentId) q = q.eq('assignee_agent_id', filter.assigneeAgentId);
@@ -287,36 +371,43 @@ export async function listTasks(ctx: ActorContext, filter: TaskFilter = {}) {
   return data ?? [];
 }
 
-export async function getTask(projectScope: string[], taskId: string) {
-  const { data, error } = await db().from('tasks').select('*').eq('id', taskId).maybeSingle();
+/**
+ * Returns null for a task outside the actor's account OR project scope — the two cases are
+ * deliberately indistinguishable to the caller, so a task id cannot be used to probe for
+ * the existence of work in another tenant.
+ */
+export async function getTask(ctx: ActorContext, taskId: string) {
+  const { data, error } = await scopedSelect(ctx, 'tasks').eq('id', taskId).maybeSingle();
   if (error) throw error;
+  if (!data || !inScope(ctx, data.project_id)) return null;
   return data;
 }
 
-export async function getProjectBoardTasks(projectId: string) {
-  const { data, error } = await db()
-    .from('tasks')
-    .select('id, title, status, priority, assignee_agent_id, assignee_is_human, due_at, acceptance_criteria, tokens_spent, agents!tasks_assignee_agent_id_fkey(name), creator:agents!tasks_created_by_agent_id_fkey(name)')
+export async function getProjectBoardTasks(ctx: ActorContext, projectId: string) {
+  if (!inScope(ctx, projectId)) return [];
+  const { data, error } = await scopedSelect(
+    ctx,
+    'tasks',
+    'id, title, status, priority, assignee_agent_id, assignee_is_human, due_at, acceptance_criteria, tokens_spent, agents!tasks_assignee_agent_id_fkey(name), creator:agents!tasks_created_by_agent_id_fkey(name)',
+  )
     .eq('project_id', projectId)
     .order('created_at', { ascending: true });
   if (error) throw error;
   return data ?? [];
 }
 
-export async function getTaskDetailData(taskId: string) {
-  const task = await db()
-    .from('tasks')
-    .select(
-      '*, projects(name, slug), agents!tasks_assignee_agent_id_fkey(name), creator:agents!tasks_created_by_agent_id_fkey(name)',
-    )
+export async function getTaskDetailData(ctx: ActorContext, taskId: string) {
+  const task = await scopedSelect(
+    ctx,
+    'tasks',
+    '*, projects(name, slug), agents!tasks_assignee_agent_id_fkey(name), creator:agents!tasks_created_by_agent_id_fkey(name)',
+  )
     .eq('id', taskId)
     .maybeSingle();
   if (task.error) throw task.error;
-  if (!task.data) return null;
+  if (!task.data || !inScope(ctx, task.data.project_id)) return null;
 
-  const comments = await db()
-    .from('comments')
-    .select('body, actor_type, created_at, agents(name)')
+  const comments = await scopedSelect(ctx, 'comments', 'body, actor_type, created_at, agents(name)')
     .eq('task_id', taskId)
     .order('created_at');
   if (comments.error) throw comments.error;
@@ -349,22 +440,20 @@ export async function recordActivity(input: {
 }
 
 // ---------- brain ----------
-export async function getBrain(projectId: string) {
-  const { data, error } = await db()
-    .from('brain_sections')
-    .select('*')
+export async function getBrain(ctx: ActorContext, projectId: string) {
+  if (!inScope(ctx, projectId)) return [];
+  const { data, error } = await scopedSelect(ctx, 'brain_sections')
     .eq('project_id', projectId)
     .order('section');
   if (error) throw error;
   return data ?? [];
 }
 
-export async function getBrainViewData(projectId: string) {
+export async function getBrainViewData(ctx: ActorContext, projectId: string) {
+  if (!inScope(ctx, projectId)) return { sections: [], proposed: [] };
   const [sections, diffs] = await Promise.all([
-    db().from('brain_sections').select('section, body, version, updated_at').eq('project_id', projectId),
-    db()
-      .from('brain_diffs')
-      .select('section, operation, after_text, status, agents(name)')
+    scopedSelect(ctx, 'brain_sections', 'section, body, version, updated_at').eq('project_id', projectId),
+    scopedSelect(ctx, 'brain_diffs', 'section, operation, after_text, status, agents(name)')
       .eq('project_id', projectId)
       .eq('status', 'proposed'),
   ]);
@@ -373,17 +462,18 @@ export async function getBrainViewData(projectId: string) {
   return { sections: sections.data ?? [], proposed: diffs.data ?? [] };
 }
 
-export async function getProjectActivityData(projectId: string) {
+export async function getProjectActivityData(ctx: ActorContext, projectId: string) {
+  if (!inScope(ctx, projectId)) return { activity: [], sessions: [] };
   const [activity, sessions] = await Promise.all([
-    db()
-      .from('activity')
-      .select('id, verb, summary, reason, actor_type, created_at, agents(name)')
+    scopedSelect(ctx, 'activity', 'id, verb, summary, reason, actor_type, created_at, agents(name)')
       .eq('project_id', projectId)
       .order('created_at', { ascending: false })
       .limit(40),
-    db()
-      .from('session_logs')
-      .select('id, summary, changes, tests_status, blocked_on, next_step, created_at, agents(name)')
+    scopedSelect(
+      ctx,
+      'session_logs',
+      'id, summary, changes, tests_status, blocked_on, next_step, created_at, agents(name)',
+    )
       .eq('project_id', projectId)
       .order('created_at', { ascending: false })
       .limit(15),
@@ -393,19 +483,23 @@ export async function getProjectActivityData(projectId: string) {
   return { activity: activity.data ?? [], sessions: sessions.data ?? [] };
 }
 
-export async function getMoneyOverviewData() {
-  const { data, error } = await db()
-    .from('milestones')
-    .select('title, amount, currency, status, due_at, paid_at, projects(name, slug, clients(name))');
+export async function getMoneyOverviewData(ctx: ActorContext) {
+  let q = scopedSelect(
+    ctx,
+    'milestones',
+    'project_id, title, amount, currency, status, due_at, paid_at, projects(name, slug, clients(name))',
+  );
+  if (ctx.projectScope.length > 0) q = q.in('project_id', ctx.projectScope);
+  const { data, error } = await q;
   if (error) throw error;
   return data ?? [];
 }
 
-export async function getClientsViewData() {
+export async function getClientsViewData(ctx: ActorContext) {
   const [clients, projects, milestones] = await Promise.all([
-    db().from('clients').select('*').order('name'),
-    db().from('projects').select('id, name, slug, client_id'),
-    db().from('milestones').select('amount, status, project_id'),
+    scopedSelect(ctx, 'clients').order('name'),
+    scopedSelect(ctx, 'projects', 'id, name, slug, client_id'),
+    scopedSelect(ctx, 'milestones', 'amount, status, project_id'),
   ]);
   if (clients.error) throw clients.error;
   if (projects.error) throw projects.error;
@@ -417,12 +511,12 @@ export async function getClientsViewData() {
   };
 }
 
-export async function getAgentsViewData() {
+export async function getAgentsViewData(ctx: ActorContext) {
   const [agents, projects, taskTokens, sessionTokens] = await Promise.all([
-    db().from('agents').select('*').order('created_at', { ascending: false }),
-    db().from('projects').select('id, name'),
-    db().from('tasks').select('created_by_agent_id, tokens_spent').gt('tokens_spent', 0),
-    db().from('session_logs').select('agent_id, tokens_spent').gt('tokens_spent', 0),
+    scopedSelect(ctx, 'agents').order('created_at', { ascending: false }),
+    scopedSelect(ctx, 'projects', 'id, name'),
+    scopedSelect(ctx, 'tasks', 'created_by_agent_id, tokens_spent').gt('tokens_spent', 0),
+    scopedSelect(ctx, 'session_logs', 'agent_id, tokens_spent').gt('tokens_spent', 0),
   ]);
   if (agents.error) throw agents.error;
   if (projects.error) throw projects.error;
@@ -436,44 +530,47 @@ export async function getAgentsViewData() {
   };
 }
 
-export async function getPendingApprovalCountData(): Promise<number> {
+export async function getPendingApprovalCountData(ctx: ActorContext): Promise<number> {
   const { count, error } = await db()
     .from('approvals')
     .select('id', { count: 'exact', head: true })
+    .eq('account_id', ctx.accountId)
     .eq('status', 'open');
   if (error) throw error;
   return count ?? 0;
 }
 
-export async function getTodayDataModel() {
+export async function getTodayDataModel(ctx: ActorContext) {
   const [approvals, due, blocked, projects] = await Promise.all([
-    db()
-      .from('approvals')
-      .select('id, kind, title, status, requested_by_agent_id, project_id, agents(name), projects(name)')
+    scopedSelect(
+      ctx,
+      'approvals',
+      'id, kind, title, status, requested_by_agent_id, project_id, agents(name), projects(name)',
+    )
       .eq('status', 'open')
       .order('created_at', { ascending: false })
       .limit(5),
-    db()
-      .from('tasks')
-      .select('id, title, status, due_at, project_id, projects(name)')
+    scopedSelect(ctx, 'tasks', 'id, title, status, due_at, project_id, projects(name)')
       .not('status', 'in', '(done,cancelled)')
       .not('due_at', 'is', null)
       .lte('due_at', new Date(Date.now() + 3 * 864e5).toISOString())
       .order('due_at', { ascending: true })
       .limit(8),
-    db()
-      .from('tasks')
-      .select('id, title, status, project_id, assignee_agent_id, agents!tasks_assignee_agent_id_fkey(name), projects(name)')
+    scopedSelect(
+      ctx,
+      'tasks',
+      'id, title, status, project_id, assignee_agent_id, agents!tasks_assignee_agent_id_fkey(name), projects(name)',
+    )
       .eq('status', 'blocked')
       .limit(8),
-    db().from('projects').select('id, name, slug'),
+    scopedSelect(ctx, 'projects', 'id, name, slug'),
   ]);
   if (approvals.error) throw approvals.error;
   if (due.error) throw due.error;
   if (blocked.error) throw blocked.error;
   if (projects.error) throw projects.error;
 
-  const withTasks = await db().from('tasks').select('project_id').not('status', 'in', '(done,cancelled)');
+  const withTasks = await scopedSelect(ctx, 'tasks', 'project_id').not('status', 'in', '(done,cancelled)');
   if (withTasks.error) throw withTasks.error;
 
   return {
@@ -490,34 +587,28 @@ export async function getProjectTriageData(ctx: ActorContext, projectId: string)
   if (!inScope(ctx, projectId)) throw new Error('project out of actor scope');
 
   const [project, tasks, activity, sessions, brain, milestones] = await Promise.all([
-    db().from('projects').select('id, name, slug, status, updated_at, clients(name)').eq('id', projectId).maybeSingle(),
-    db()
-      .from('tasks')
-      .select(
-        'id, project_id, title, status, priority, assignee_agent_id, assignee_is_human, due_at, updated_at, created_at, human_touched_at, acceptance_criteria',
-      )
+    scopedSelect(ctx, 'projects', 'id, name, slug, status, updated_at, clients(name)')
+      .eq('id', projectId)
+      .maybeSingle(),
+    scopedSelect(
+      ctx,
+      'tasks',
+      'id, project_id, title, status, priority, assignee_agent_id, assignee_is_human, due_at, updated_at, created_at, human_touched_at, acceptance_criteria',
+    )
       .eq('project_id', projectId)
       .order('updated_at', { ascending: false }),
-    db()
-      .from('activity')
-      .select('id, project_id, task_id, verb, summary, actor_type, created_at')
+    scopedSelect(ctx, 'activity', 'id, project_id, task_id, verb, summary, actor_type, created_at')
       .eq('project_id', projectId)
       .order('created_at', { ascending: false })
       .limit(40),
-    db()
-      .from('session_logs')
-      .select('id, project_id, task_id, summary, blocked_on, next_step, created_at')
+    scopedSelect(ctx, 'session_logs', 'id, project_id, task_id, summary, blocked_on, next_step, created_at')
       .eq('project_id', projectId)
       .order('created_at', { ascending: false })
       .limit(40),
-    db()
-      .from('brain_sections')
-      .select('id, project_id, section, body, version, updated_at')
+    scopedSelect(ctx, 'brain_sections', 'id, project_id, section, body, version, updated_at')
       .eq('project_id', projectId)
       .order('section'),
-    db()
-      .from('milestones')
-      .select('id, project_id, title, status, due_at, amount, currency')
+    scopedSelect(ctx, 'milestones', 'id, project_id, title, status, due_at, amount, currency')
       .eq('project_id', projectId)
       .order('due_at', { ascending: true }),
   ]);
@@ -547,21 +638,22 @@ export async function listProjectTriageData(ctx: ActorContext) {
 
 // ---------- search (tasks + brain + activity) ----------
 export async function search(ctx: ActorContext, query: string, projectId?: string) {
+  if (projectId && !inScope(ctx, projectId)) return { tasks: [], brain: [], activity: [] };
   const scope = projectId ? [projectId] : ctx.projectScope;
   const scopeFilter = (q: any) => (scope.length > 0 ? q.in('project_id', scope) : q);
 
   const tasks = await scopeFilter(
-    db().from('tasks').select('id, project_id, title, status').ilike('title', `%${query}%`).limit(20),
+    scopedSelect(ctx, 'tasks', 'id, project_id, title, status').ilike('title', `%${query}%`).limit(20),
   );
   const brain = await scopeFilter(
-    db()
-      .from('brain_sections')
-      .select('project_id, section, body')
+    scopedSelect(ctx, 'brain_sections', 'project_id, section, body')
       .textSearch('body_tsv', query, { type: 'websearch' })
       .limit(20),
   );
   const activity = await scopeFilter(
-    db().from('activity').select('project_id, verb, summary, created_at').ilike('summary', `%${query}%`).limit(20),
+    scopedSelect(ctx, 'activity', 'project_id, verb, summary, created_at')
+      .ilike('summary', `%${query}%`)
+      .limit(20),
   );
 
   return {
@@ -572,16 +664,29 @@ export async function search(ctx: ActorContext, query: string, projectId?: strin
 }
 
 // ---------- context pack data gathering ----------
-export async function getContextPackData(projectId: string, taskId?: string) {
-  const project = await db().from('projects').select('name').eq('id', projectId).maybeSingle();
+/**
+ * Assemble the raw material for a task's Context Pack.
+ *
+ * The focused task is fetched with BOTH its id and the pack's project_id, not by id alone.
+ * Fetching by id let a caller pass a project they can see plus a task from a project they
+ * cannot, and the other project's title, description, acceptance criteria and full comment
+ * thread would be assembled into the pack — the exact cross-project context leak the
+ * permission model exists to prevent. A task id that does not live in projectId now yields
+ * no focused task rather than someone else's work.
+ */
+export async function getContextPackData(ctx: ActorContext, projectId: string, taskId?: string) {
+  if (!inScope(ctx, projectId)) throw new Error('project out of actor scope');
+  const project = await scopedSelect(ctx, 'projects', 'name').eq('id', projectId).maybeSingle();
+  if (!project.data) throw new Error('project not found');
 
   let focusedTask = undefined as any;
   if (taskId) {
-    const t = await db().from('tasks').select('*').eq('id', taskId).maybeSingle();
+    const t = await scopedSelect(ctx, 'tasks')
+      .eq('id', taskId)
+      .eq('project_id', projectId)
+      .maybeSingle();
     if (t.data) {
-      const comments = await db()
-        .from('comments')
-        .select('actor_type, body')
+      const comments = await scopedSelect(ctx, 'comments', 'actor_type, body')
         .eq('task_id', taskId)
         .order('created_at');
       focusedTask = {
@@ -594,17 +699,13 @@ export async function getContextPackData(projectId: string, taskId?: string) {
     }
   }
 
-  const brain = await db().from('brain_sections').select('section, body').eq('project_id', projectId);
-  const related = await db()
-    .from('tasks')
-    .select('id, title, status, assignee_agent_id')
+  const brain = await scopedSelect(ctx, 'brain_sections', 'section, body').eq('project_id', projectId);
+  const related = await scopedSelect(ctx, 'tasks', 'id, title, status, assignee_agent_id')
     .eq('project_id', projectId)
     .neq('status', 'done')
     .neq('status', 'cancelled')
     .limit(15);
-  const activity = await db()
-    .from('activity')
-    .select('verb, summary, created_at')
+  const activity = await scopedSelect(ctx, 'activity', 'verb, summary, created_at')
     .eq('project_id', projectId)
     .order('created_at', { ascending: false })
     .limit(10);
@@ -633,6 +734,7 @@ export async function createTask(
     assigneeAgentId?: string | null;
   },
 ) {
+  await requireProject(ctx, input.projectId);
   const { data, error } = await db()
     .from('tasks')
     .insert({
@@ -668,7 +770,11 @@ export async function updateTask(
   patch: Record<string, unknown>,
   reason?: string,
 ) {
-  const { data, error } = await db().from('tasks').update(patch).eq('id', taskId).select().single();
+  // Re-read through the scoped path rather than trusting the caller's earlier lookup: this
+  // is a write, so it must establish for itself that the task is the actor's to change.
+  const existing = await getTask(ctx, taskId);
+  if (!existing) throw new Error('task not found');
+  const { data, error } = await scopedUpdate(ctx, 'tasks', patch).eq('id', taskId).select().single();
   if (error) throw error;
   await recordActivity({
     projectId: data.project_id,
@@ -682,10 +788,9 @@ export async function updateTask(
 }
 
 /** Agents that may be assigned work on a project: scoped to it (or all-projects), not revoked. */
-export async function getAssignableAgents(projectId: string) {
-  const { data, error } = await db()
-    .from('agents')
-    .select('id, name, role, project_scope')
+export async function getAssignableAgents(ctx: ActorContext, projectId: string) {
+  if (!inScope(ctx, projectId)) return [];
+  const { data, error } = await scopedSelect(ctx, 'agents', 'id, name, role, project_scope')
     .is('revoked_at', null)
     .order('name');
   if (error) throw error;
@@ -699,14 +804,12 @@ export async function getSelf(ctx: ActorContext) {
   if (!ctx.agentId) {
     return { agentId: null, name: 'owner', role: ctx.role, projects: [] as string[] };
   }
-  const { data } = await db()
-    .from('agents')
-    .select('name, role, project_scope')
+  const { data } = await scopedSelect(ctx, 'agents', 'name, role, project_scope')
     .eq('id', ctx.agentId)
     .maybeSingle();
   let projects: string[] = [];
   if (data?.project_scope?.length) {
-    const p = await db().from('projects').select('name').in('id', data.project_scope);
+    const p = await scopedSelect(ctx, 'projects', 'name').in('id', data.project_scope);
     projects = (p.data ?? []).map((x: any) => x.name);
   }
   return { agentId: ctx.agentId, name: data?.name ?? null, role: ctx.role, projects };
@@ -717,9 +820,7 @@ export async function renameSelf(ctx: ActorContext, newName: string) {
   if (!ctx.agentId) throw new Error('only agents can rename themselves');
   const clean = newName.trim();
   if (!clean) throw new Error('name is empty');
-  const { data, error } = await db()
-    .from('agents')
-    .update({ name: clean })
+  const { data, error } = await scopedUpdate(ctx, 'agents', { name: clean })
     .eq('id', ctx.agentId)
     .select('name')
     .single();
@@ -729,6 +830,11 @@ export async function renameSelf(ctx: ActorContext, newName: string) {
 }
 
 export async function addComment(ctx: ActorContext, taskId: string, body: string, reason?: string) {
+  // Establish the task is the actor's BEFORE writing — comments carry no project_id of
+  // their own, so a comment on an unreachable task would be an orphan nobody can moderate.
+  const task = await getTask(ctx, taskId);
+  if (!task) throw new Error('task not found');
+
   const { data, error } = await db()
     .from('comments')
     .insert({
@@ -741,9 +847,8 @@ export async function addComment(ctx: ActorContext, taskId: string, body: string
     .select()
     .single();
   if (error) throw error;
-  const task = await db().from('tasks').select('project_id').eq('id', taskId).maybeSingle();
   await recordActivity({
-    projectId: task.data?.project_id,
+    projectId: task.project_id,
     taskId,
     ctx,
     verb: 'comment.added',
@@ -816,15 +921,20 @@ export async function createMentionNotifications(
 const INBOX_SELECT =
   'id, actor_agent_id, project_id, task_id, comment_id, kind, body, read_at, created_at, actor:agents!notifications_actor_agent_id_fkey(name), project:projects(name)';
 
-/** The caller's notifications, newest first. Unread-only unless includeRead. */
+/**
+ * The caller's notifications, newest first. Unread-only unless includeRead.
+ *
+ * Keyed on the caller's own agent id, which is itself account-bound — the account filter is
+ * belt-and-braces so this stays correct if a future caller ever passes an id it didn't
+ * authenticate as.
+ */
 export async function listInbox(
-  agentId: string,
+  ctx: ActorContext,
   opts: { includeRead?: boolean; limit?: number } = {},
 ) {
-  let q = db()
-    .from('notifications')
-    .select(INBOX_SELECT)
-    .eq('recipient_agent_id', agentId)
+  if (!ctx.agentId) return [];
+  let q = scopedSelect(ctx, 'notifications', INBOX_SELECT)
+    .eq('recipient_agent_id', ctx.agentId)
     .order('created_at', { ascending: false })
     .limit(Math.min(opts.limit ?? 50, 200));
   if (!opts.includeRead) q = q.is('read_at', null);
@@ -834,11 +944,10 @@ export async function listInbox(
 }
 
 /** One long-poll tick: unread notifications strictly newer than `sinceIso` (oldest first). */
-export async function pollInboxSince(agentId: string, sinceIso: string, limit = 50) {
-  const { data, error } = await db()
-    .from('notifications')
-    .select(INBOX_SELECT)
-    .eq('recipient_agent_id', agentId)
+export async function pollInboxSince(ctx: ActorContext, sinceIso: string, limit = 50) {
+  if (!ctx.agentId) return [];
+  const { data, error } = await scopedSelect(ctx, 'notifications', INBOX_SELECT)
+    .eq('recipient_agent_id', ctx.agentId)
     .is('read_at', null)
     .gt('created_at', sinceIso)
     .order('created_at', { ascending: true })
@@ -848,11 +957,10 @@ export async function pollInboxSince(agentId: string, sinceIso: string, limit = 
 }
 
 /** Mark the caller's notifications read. Scoped to recipient = caller; ids optional (all unread if omitted). */
-export async function markNotificationsRead(agentId: string, ids?: string[]): Promise<number> {
-  let q = db()
-    .from('notifications')
-    .update({ read_at: new Date().toISOString() })
-    .eq('recipient_agent_id', agentId)
+export async function markNotificationsRead(ctx: ActorContext, ids?: string[]): Promise<number> {
+  if (!ctx.agentId) return 0;
+  let q = scopedUpdate(ctx, 'notifications', { read_at: new Date().toISOString() })
+    .eq('recipient_agent_id', ctx.agentId)
     .is('read_at', null);
   if (ids && ids.length > 0) q = q.in('id', ids);
   const { data, error } = await q.select('id');
@@ -873,6 +981,7 @@ export async function logSession(
     tokensSpent?: number;
   },
 ) {
+  await requireProject(ctx, input.projectId);
   const { data, error } = await db()
     .from('session_logs')
     .insert({
@@ -912,6 +1021,7 @@ export async function proposeBrainUpdate(
     evidenceSessionLogId?: string;
   },
 ) {
+  await requireProject(ctx, input.projectId);
   const diff = await db()
     .from('brain_diffs')
     .insert({
@@ -965,20 +1075,23 @@ export type ApprovalCard = {
   diff: { section: string; before: string | null; after: string | null; evidence: string | null } | null;
 };
 
-export async function getOpenApprovals(): Promise<ApprovalCard[]> {
-  const db = serviceClient();
-  const { data, error } = await db
-    .from('approvals')
-    .select('id, kind, title, payload, created_at, project_id, agents(name), projects(name)')
+export async function getOpenApprovals(ctx: ActorContext): Promise<ApprovalCard[]> {
+  const { data, error } = await scopedSelect(
+    ctx,
+    'approvals',
+    'id, kind, title, payload, created_at, project_id, agents(name), projects(name)',
+  )
     .eq('status', 'open')
     .order('created_at', { ascending: false });
   if (error) throw error;
   const rows = data ?? [];
 
+  // The diff ids come out of approval payloads we just account-filtered, but re-scoping the
+  // fetch keeps a tampered payload from pulling another account's diff into the review card.
   const diffIds = rows.map((r: any) => r.payload?.brain_diff_id).filter(Boolean);
   const diffs: Record<string, any> = {};
   if (diffIds.length) {
-    const { data: d } = await db.from('brain_diffs').select('*').in('id', diffIds);
+    const { data: d } = await scopedSelect(ctx, 'brain_diffs').in('id', diffIds);
     for (const x of d ?? []) diffs[x.id] = x;
   }
 
@@ -1019,14 +1132,13 @@ export async function resolveApproval(
   decision: 'approve' | 'reject',
   note?: string,
 ) {
-  const db = serviceClient();
   const nowIso = new Date().toISOString();
-  const { data: appr, error } = await db.from('approvals').select('*').eq('id', approvalId).maybeSingle();
+  // Account-scoped read: an approval id alone must not let one account resolve another's
+  // proposal. A miss is reported as not-found rather than forbidden, so an id cannot be
+  // used to probe for approvals that exist in other tenants.
+  const { data: appr, error } = await scopedSelect(ctx, 'approvals').eq('id', approvalId).maybeSingle();
   if (error) throw error;
   if (!appr) throw new Error('approval not found');
-  // This runs on the service-role client, which bypasses RLS — so the tenancy check must
-  // be explicit here, or an id alone would let one account resolve another's approval.
-  if (appr.account_id !== ctx.accountId) throw new Error('approval not found');
   if (appr.status !== 'open') return { status: appr.status };
 
   if (appr.kind === 'brain_diff') {
@@ -1034,46 +1146,42 @@ export async function resolveApproval(
     let after: string | null = appr.payload?.after ?? null;
     let diffId: string | null = appr.payload?.brain_diff_id ?? null;
     if (diffId) {
-      const { data: bd } = await db.from('brain_diffs').select('*').eq('id', diffId).maybeSingle();
+      const { data: bd } = await scopedSelect(ctx, 'brain_diffs').eq('id', diffId).maybeSingle();
       if (bd) {
         section = bd.section;
         after = bd.after_text;
       }
     }
     if (decision === 'approve' && section && after != null) {
-      const { data: existing } = await db
-        .from('brain_sections')
-        .select('id, version')
+      const { data: existing } = await scopedSelect(ctx, 'brain_sections', 'id, version')
         .eq('project_id', appr.project_id)
         .eq('section', section)
         .maybeSingle();
       if (existing) {
-        await db
-          .from('brain_sections')
-          .update({ body: after, version: existing.version + 1, updated_at: nowIso })
-          .eq('id', existing.id);
+        await scopedUpdate(ctx, 'brain_sections', {
+          body: after,
+          version: existing.version + 1,
+          updated_at: nowIso,
+        }).eq('id', existing.id);
       } else {
-        await db
+        await db()
           .from('brain_sections')
           .insert({ account_id: appr.account_id, project_id: appr.project_id, section, body: after });
       }
     }
     if (diffId) {
-      await db
-        .from('brain_diffs')
-        .update({ status: decision === 'approve' ? 'merged' : 'rejected', resolved_at: nowIso })
-        .eq('id', diffId);
+      await scopedUpdate(ctx, 'brain_diffs', {
+        status: decision === 'approve' ? 'merged' : 'rejected',
+        resolved_at: nowIso,
+      }).eq('id', diffId);
     }
   }
 
-  await db
-    .from('approvals')
-    .update({
-      status: decision === 'approve' ? 'approved' : 'rejected',
-      resolved_at: nowIso,
-      resolution_note: note ?? null,
-    })
-    .eq('id', approvalId);
+  await scopedUpdate(ctx, 'approvals', {
+    status: decision === 'approve' ? 'approved' : 'rejected',
+    resolved_at: nowIso,
+    resolution_note: note ?? null,
+  }).eq('id', approvalId);
 
   await recordActivity({
     projectId: appr.project_id,
@@ -1090,6 +1198,7 @@ export async function requestApproval(
   ctx: ActorContext,
   input: { projectId?: string; kind: string; title: string; payload?: Record<string, unknown> },
 ) {
+  if (input.projectId) await requireProject(ctx, input.projectId);
   const { data, error } = await db()
     .from('approvals')
     .insert({

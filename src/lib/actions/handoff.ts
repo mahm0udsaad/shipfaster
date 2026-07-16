@@ -6,7 +6,7 @@ import { createTask, getAssignableAgents } from '../db/repository';
 import { buildHandoffPrompt } from '../handoff';
 
 export async function getAssignableAgentsAction(projectId: string) {
-  return getAssignableAgents(projectId);
+  return getAssignableAgents(await getOwnerContext(), projectId);
 }
 
 /**

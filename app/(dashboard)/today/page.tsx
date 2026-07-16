@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { getTodayData } from '../../../src/lib/dashboard';
+import { getOwnerContext, getTodayData } from '../../../src/lib/dashboard';
 import { ActorTag, StatusPill } from '../../../src/components/actor';
 
 export const dynamic = 'force-dynamic';
@@ -31,7 +31,7 @@ function dueLabel(due: string | null): { text: string; overdue: boolean } {
 }
 
 export default async function TodayPage() {
-  const { approvals, due, blocked, stale } = await getTodayData();
+  const { approvals, due, blocked, stale } = await getTodayData(await getOwnerContext());
   const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
 
   const empty = !approvals.length && !due.length && !blocked.length && !stale.length;

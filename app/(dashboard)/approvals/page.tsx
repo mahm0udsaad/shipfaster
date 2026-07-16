@@ -1,10 +1,11 @@
 import { getOpenApprovals } from '../../../src/lib/db/repository';
+import { getOwnerContext } from '../../../src/lib/dashboard';
 import { ApprovalsClient } from './approvals-client';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ApprovalsPage() {
-  const approvals = await getOpenApprovals();
+  const approvals = await getOpenApprovals(await getOwnerContext());
 
   return (
     <div className="mx-auto max-w-3xl">

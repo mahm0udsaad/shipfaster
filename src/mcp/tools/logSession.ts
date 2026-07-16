@@ -30,7 +30,7 @@ export const logSessionTool = defineTool({
   async handler({ ctx, input }) {
     if (!inScope(ctx, input.project_id)) throw forbidden('project out of token scope');
     if (ctx.role === 'worker' && input.task_id) {
-      const task = await getTask(ctx.projectScope, input.task_id);
+      const task = await getTask(ctx, input.task_id);
       if (task && task.assignee_agent_id !== ctx.agentId) {
         throw forbidden('workers may only log sessions against their own task');
       }

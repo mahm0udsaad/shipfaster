@@ -9,15 +9,22 @@ import {
   getProjectBySlug as getProjectBySlugData,
   getProjectsOverviewData,
   getTaskDetailData,
+  type ActorContext,
 } from './db/repository';
 import { assembleContextPack } from './context/pack';
 
-/** Dashboard read-views. Server-only aggregation over the live DB. */
+/**
+ * Dashboard read-views. Server-only aggregation over the live DB.
+ *
+ * Every view takes the caller's ActorContext rather than resolving one itself: the account
+ * a page renders must come from who is asking, and passing it in means that when real auth
+ * replaces getOwnerContext() only the page changes, not this layer.
+ */
 
 const OPEN = ['todo', 'in_progress', 'blocked', 'review'];
 
-export async function getProjectsOverview() {
-  const { projects, tasks, milestones, agents } = await getProjectsOverviewData();
+export async function getProjectsOverview(ctx: ActorContext) {
+  const { projects, tasks, milestones, agents } = await getProjectsOverviewData(ctx);
 
   return projects.map((p: any) => {
     const pTasks = tasks.filter((t: any) => t.project_id === p.id);
@@ -43,12 +50,12 @@ export async function getProjectsOverview() {
   });
 }
 
-export async function getProjectBySlug(slug: string) {
-  return getProjectBySlugData(slug);
+export async function getProjectBySlug(ctx: ActorContext, slug: string) {
+  return getProjectBySlugData(ctx, slug);
 }
 
-export async function getBoard(projectId: string) {
-  const data = await getProjectBoardTasks(projectId);
+export async function getBoard(ctx: ActorContext, projectId: string) {
+  const data = await getProjectBoardTasks(ctx, projectId);
   const cols: Record<string, any[]> = { todo: [], in_progress: [], blocked: [], review: [], done: [] };
   for (const t of data) {
     const col = cols[t.status];
@@ -57,19 +64,19 @@ export async function getBoard(projectId: string) {
   return cols;
 }
 
-export async function getBrainView(projectId: string) {
-  return getBrainViewData(projectId);
+export async function getBrainView(ctx: ActorContext, projectId: string) {
+  return getBrainViewData(ctx, projectId);
 }
 
-export async function getActivityView(projectId: string) {
-  return getProjectActivityData(projectId);
+export async function getActivityView(ctx: ActorContext, projectId: string) {
+  return getProjectActivityData(ctx, projectId);
 }
 
-export async function getTaskDetail(taskId: string) {
-  const detail = await getTaskDetailData(taskId);
+export async function getTaskDetail(ctx: ActorContext, taskId: string) {
+  const detail = await getTaskDetailData(ctx, taskId);
   if (!detail) return null;
   const { task, comments } = detail;
-  const packData = await getContextPackData(task.project_id, taskId);
+  const packData = await getContextPackData(ctx, task.project_id, taskId);
   const pack = assembleContextPack({
     projectName: packData.projectName,
     focusedTask: packData.focusedTask,
@@ -81,8 +88,8 @@ export async function getTaskDetail(taskId: string) {
   return { task, comments, pack };
 }
 
-export async function getMoneyOverview() {
-  const rows = await getMoneyOverviewData();
+export async function getMoneyOverview(ctx: ActorContext) {
+  const rows = await getMoneyOverviewData(ctx);
   const byCurrency: Record<string, { owed: number; paid: number }> = {};
   for (const m of rows) {
     const c = m.currency ?? 'USD';
@@ -96,8 +103,8 @@ export async function getMoneyOverview() {
   return { byCurrency, unpaid, all: rows };
 }
 
-export async function getClientsView() {
-  const { clients, projects, milestones } = await getClientsViewData();
+export async function getClientsView(ctx: ActorContext) {
+  const { clients, projects, milestones } = await getClientsViewData(ctx);
   return clients.map((c: any) => {
     const cProjects = projects.filter((p: any) => p.client_id === c.id);
     const projIds = new Set(cProjects.map((p: any) => p.id));
@@ -108,8 +115,8 @@ export async function getClientsView() {
   });
 }
 
-export async function getAgentsView() {
-  const { agents, projects, taskTokens, sessionTokens } = await getAgentsViewData();
+export async function getAgentsView(ctx: ActorContext) {
+  const { agents, projects, taskTokens, sessionTokens } = await getAgentsViewData(ctx);
   const nameById = new Map(projects.map((p: any) => [p.id, p.name]));
 
   const tokensByAgent = new Map<string, number>();

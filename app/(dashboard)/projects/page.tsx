@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { getProjectsOverview } from '../../../src/lib/views';
+import { getOwnerContext } from '../../../src/lib/dashboard';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,7 +10,7 @@ function money(n: number, c = 'USD') {
 }
 
 export default async function ProjectsPage() {
-  const projects = await getProjectsOverview();
+  const projects = await getProjectsOverview(await getOwnerContext());
   const activeAgents = projects.filter((p) => p.agentActive).length;
 
   return (

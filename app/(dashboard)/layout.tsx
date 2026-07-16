@@ -1,8 +1,8 @@
 import { Sidebar } from '../../src/components/sidebar';
-import { getPendingApprovalCount } from '../../src/lib/dashboard';
+import { getOwnerContext, getPendingApprovalCount } from '../../src/lib/dashboard';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const pending = await getPendingApprovalCount();
+  const pending = await getPendingApprovalCount(await getOwnerContext());
   const owner = {
     name: process.env.OWNER_NAME ?? 'Mahmoud',
     plan: process.env.OWNER_PLAN ?? 'solo · free',

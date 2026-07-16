@@ -35,7 +35,7 @@ export const waitForMentionsTool = defineTool({
     // Poll until something new arrives for us or we hit the deadline.
     // eslint-disable-next-line no-constant-condition
     while (true) {
-      const rows = await pollInboxSince(ctx.agentId, since);
+      const rows = await pollInboxSince(ctx, since);
       const newest = rows[rows.length - 1];
       if (newest) {
         return { notifications: rows, cursor: newest.created_at as string };

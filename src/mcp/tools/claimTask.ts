@@ -17,7 +17,7 @@ export const claimTaskTool = defineTool({
   allowedRoles: ['owner', 'project_lead', 'worker'],
   mutates: true,
   async handler({ ctx, input }) {
-    const task = await getTask(ctx.projectScope, input.task_id);
+    const task = await getTask(ctx, input.task_id);
     if (!task) throw notFound('task not found');
     if (!inScope(ctx, task.project_id)) throw forbidden('task out of token scope');
 

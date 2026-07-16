@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { getClientsView } from '../../../src/lib/views';
+import { getOwnerContext } from '../../../src/lib/dashboard';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,7 +9,7 @@ function money(n: number) {
 }
 
 export default async function ClientsPage() {
-  const clients = await getClientsView();
+  const clients = await getClientsView(await getOwnerContext());
 
   return (
     <div className="mx-auto max-w-3xl">

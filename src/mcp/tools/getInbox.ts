@@ -20,7 +20,7 @@ export const getInboxTool = defineTool({
   mutates: false,
   async handler({ ctx, input }) {
     if (!ctx.agentId) throw forbidden('inbox is per-agent; the human owner has none');
-    const notifications = await listInbox(ctx.agentId, {
+    const notifications = await listInbox(ctx, {
       includeRead: input.include_read,
       limit: input.limit,
     });

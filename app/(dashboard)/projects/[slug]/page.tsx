@@ -6,6 +6,7 @@ import {
   getBrainView,
   getActivityView,
 } from '../../../../src/lib/views';
+import { getOwnerContext } from '../../../../src/lib/dashboard';
 import { Board } from '../../../../src/components/project/board';
 import { Brain } from '../../../../src/components/project/brain';
 import { Activity } from '../../../../src/components/project/activity';
@@ -33,7 +34,8 @@ export default async function ProjectPage({
 }) {
   const { slug } = await params;
   const sp = await searchParams;
-  const project = await getProjectBySlug(slug);
+  const ctx = await getOwnerContext();
+  const project = await getProjectBySlug(ctx, slug);
   if (!project) notFound();
 
   const tab: Tab = (TABS as readonly string[]).includes(sp.tab ?? '') ? (sp.tab as Tab) : 'board';
@@ -81,9 +83,9 @@ export default async function ProjectPage({
         ))}
       </div>
 
-      {tab === 'board' && <Board cols={await getBoard(project.id)} slug={slug} />}
-      {tab === 'brain' && <Brain {...(await getBrainView(project.id))} />}
-      {tab === 'activity' && <Activity {...(await getActivityView(project.id))} />}
+      {tab === 'board' && <Board cols={await getBoard(ctx, project.id)} slug={slug} />}
+      {tab === 'brain' && <Brain {...(await getBrainView(ctx, project.id))} />}
+      {tab === 'activity' && <Activity {...(await getActivityView(ctx, project.id))} />}
       {tab === 'milestones' && <Milestones milestones={milestones} />}
 
       {sp.task && <TaskDrawer taskId={sp.task} slug={slug} />}

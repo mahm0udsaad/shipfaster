@@ -1,6 +1,7 @@
 import {
   addComment,
   getAgentByName,
+  resolveSoleAccountId,
   getProjectTriageData,
   listProjectTriageData,
   logSession,
@@ -203,7 +204,7 @@ export function planProjectTriage(
 }
 
 export async function getProjectLeadActorContext(): Promise<ActorContext> {
-  const agent = await getAgentByName('project-lead');
+  const agent = await getAgentByName(await resolveSoleAccountId(), 'project-lead');
   if (!agent) throw new Error("missing agents row named 'project-lead'");
   if (agent.revoked_at) throw new Error("agents row named 'project-lead' is revoked");
   if (agent.role !== 'project_lead') throw new Error("agents row named 'project-lead' must have role project_lead");

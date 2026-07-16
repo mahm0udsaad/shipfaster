@@ -18,7 +18,7 @@ export const markReadTool = defineTool({
   mutates: true,
   async handler({ ctx, input }) {
     if (!ctx.agentId) throw forbidden('inbox is per-agent; the human owner has none');
-    const marked = await markNotificationsRead(ctx.agentId, input.notification_ids);
+    const marked = await markNotificationsRead(ctx, input.notification_ids);
     return { marked };
   },
 });

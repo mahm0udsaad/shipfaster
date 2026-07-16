@@ -33,7 +33,7 @@ export const createTaskTool = defineTool({
     // Workers may only create subtasks of their own task, never top-level tasks.
     if (ctx.role === 'worker') {
       if (!input.parent_task_id) throw forbidden('workers may only create subtasks (parent_task_id required)');
-      const parent = await getTask(ctx.projectScope, input.parent_task_id);
+      const parent = await getTask(ctx, input.parent_task_id);
       if (!parent) throw validation('parent task not found');
       if (parent.assignee_agent_id !== ctx.agentId) throw forbidden('workers may only subtask their own task');
     }

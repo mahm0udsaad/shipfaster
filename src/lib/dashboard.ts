@@ -22,14 +22,14 @@ export async function getOwnerContext(): Promise<ActorContext> {
   };
 }
 
-export async function getPendingApprovalCount(): Promise<number> {
-  return getPendingApprovalCountData();
+export async function getPendingApprovalCount(ctx: ActorContext): Promise<number> {
+  return getPendingApprovalCountData(ctx);
 }
 
 export type TodayData = Awaited<ReturnType<typeof getTodayData>>;
 
-export async function getTodayData() {
-  const model = await getTodayDataModel();
+export async function getTodayData(ctx: ActorContext) {
+  const model = await getTodayDataModel(ctx);
   const active = new Set(model.openTaskProjectIds);
   const stale = model.projects.filter((p: any) => !active.has(p.id)).slice(0, 3);
 

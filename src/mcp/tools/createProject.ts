@@ -31,7 +31,7 @@ export const createProjectTool = defineTool({
   async handler({ ctx, input }) {
     const slug = input.slug ? slugify(input.slug) : slugify(input.name);
     if (!slug) throw validation('could not derive a slug from name — pass an explicit slug');
-    const clash = await getProjectBySlugRaw(slug);
+    const clash = await getProjectBySlugRaw(ctx, slug);
     if (clash) throw validation(`slug "${slug}" is already taken — pass a different slug`);
 
     const project = await createProject(ctx, {

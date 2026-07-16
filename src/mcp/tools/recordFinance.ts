@@ -35,7 +35,7 @@ export const recordFinanceTool = defineTool({
     if (!inScope(ctx, input.project_id)) throw forbidden('project out of token scope');
 
     if (input.milestone_id) {
-      const existing = await getMilestone(ctx.projectScope, input.milestone_id);
+      const existing = await getMilestone(ctx, input.milestone_id);
       if (!existing || existing.project_id !== input.project_id) throw notFound('milestone not found');
       if (
         input.title === undefined &&
