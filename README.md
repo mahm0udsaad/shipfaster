@@ -28,11 +28,37 @@ for the product/agent architecture.
 Fill `SUPABASE_SERVICE_ROLE_KEY` in `.env.local` (from the Supabase dashboard → Project Settings → API).
 It is intentionally NOT stored here and cannot be fetched via MCP.
 
-### ⚠️ Security note — RLS is disabled (expected for MVP)
-All 11 tables have Row Level Security **off**. The architecture keeps the service-role key
-server-side only (repository layer) and never ships the anon key with table access to the
-browser, so this is acceptable for the local/personal MVP. **Do not** expose the anon key to
-untrusted clients until M7 adds RLS policies enforcing the Section 19 permission matrix.
+### Security — tenant isolation (M7, applied)
+Two independent layers, deliberately redundant:
+
+1. **Repository account filter.** Every tenant-table read/write goes through
+   `scopedSelect`/`scopedUpdate` in `src/lib/db/repository.ts`, which cannot be called
+   without an `ActorContext`. Forgetting the account filter is a type error, not a silent
+   cross-tenant read. Enforced by `tests/db/tenancy.test.ts`.
+2. **Row Level Security** (migration `0005_rls.sql`) on all 12 tenant tables plus
+   `accounts`/`account_members`. Agents are not Supabase Auth users, so `authenticate()`
+   mints a short-lived per-agent JWT carrying an `account_id` claim
+   (`src/lib/db/actor-token.ts`); policies resolve the caller's accounts from that claim,
+   or from `account_members` for dashboard humans.
+
+Verify RLS actually binds (not just that it is switched on):
+```bash
+node --env-file=.env.local --import tsx/esm scripts/verify-rls.ts
+```
+
+**Key configuration matters more than it looks.** `SUPABASE_SECRET_KEY` must hold the
+`sb_secret_…` key (Settings → API Keys → Secret keys). It is the only key that bypasses RLS.
+This variable previously held the **anon** key: with RLS off that went unnoticed for months
+because anon had full access to everything; with RLS on it presents as every read returning
+zero rows. `client.ts` now refuses to start on a non-privileged key.
+
+`SUPABASE_JWT_SECRET` (Settings → JWT Keys → Legacy JWT Secret) signs the per-agent tokens.
+Supabase now uses that secret only to *verify* JWTs, which is what the minting relies on —
+if you ever disable the legacy secret, minting stops, queries fall back to the secret key
+(RLS bypassed) and it warns loudly. Only `src/lib/db/actor-token.ts` would need to change.
+
+Still open: the dashboard has no human auth yet — it runs as `getOwnerContext()`, which
+resolves the sole account and throws once a second one exists.
 
 Next: M2 (dashboard — Today / Board / Brain / Approvals / Money / Agents). See the plan.
 
