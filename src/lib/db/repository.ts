@@ -9,9 +9,10 @@ import { serviceClient } from './client';
 
 export type ActorContext = {
   agentId: string | null;      // null = owner/system
+  accountId: string;           // tenancy anchor — every write stamps this; every read filters by it
   actorType: 'human' | 'agent';
   role: 'owner' | 'project_lead' | 'worker' | 'intake' | 'brain_sync';
-  projectScope: string[];      // empty = all projects
+  projectScope: string[];      // empty = all projects WITHIN the account
 };
 
 function db() {
@@ -21,6 +22,26 @@ function db() {
 /** True if the actor may see/act on a given project. */
 export function inScope(ctx: ActorContext, projectId: string): boolean {
   return ctx.projectScope.length === 0 || ctx.projectScope.includes(projectId);
+}
+
+/**
+ * Resolve the account for the two credentials that predate accounts: the OWNER_TOKEN and
+ * the (still un-authenticated) dashboard. OWNER_ACCOUNT_ID wins; otherwise the sole
+ * account is unambiguous.
+ *
+ * This THROWS once a second account exists rather than guessing — that failure is the
+ * point: it makes real auth a hard prerequisite for the first signup instead of silently
+ * serving one tenant another tenant's data.
+ */
+export async function resolveSoleAccountId(): Promise<string> {
+  if (process.env.OWNER_ACCOUNT_ID) return process.env.OWNER_ACCOUNT_ID;
+  const { data, error } = await db().from('accounts').select('id').limit(2);
+  if (error) throw error;
+  if (!data || data.length === 0) throw new Error('no account exists — run migration 0004');
+  if (data.length > 1) {
+    throw new Error('multiple accounts exist — set OWNER_ACCOUNT_ID, or wire Supabase Auth (M7 phase 3)');
+  }
+  return data[0]!.id;
 }
 
 // ---------- projects ----------
@@ -35,7 +56,7 @@ export async function listProjects(ctx: ActorContext) {
 export async function getAgentByName(name: string) {
   const { data, error } = await db()
     .from('agents')
-    .select('id, name, role, project_scope, revoked_at')
+    .select('id, name, role, account_id, project_scope, revoked_at')
     .eq('name', name)
     .maybeSingle();
   if (error) throw error;
@@ -52,6 +73,93 @@ export async function getProject(ctx: ActorContext, projectId: string) {
   return data;
 }
 
+// ---------- milestones (money-aware) ----------
+export type MilestoneStatus = 'pending' | 'invoiced' | 'paid';
+
+export async function getMilestone(projectScope: string[], milestoneId: string) {
+  let q = db().from('milestones').select('*').eq('id', milestoneId);
+  if (projectScope.length > 0) q = q.in('project_id', projectScope);
+  const { data, error } = await q.maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+/** Create a milestone (a money figure — e.g. "5k remaining to collect") and audit it. */
+export async function createMilestone(
+  ctx: ActorContext,
+  input: {
+    projectId: string;
+    title: string;
+    amount: number;
+    currency?: string;
+    status?: MilestoneStatus;
+    dueAt?: string;
+  },
+) {
+  const { data, error } = await db()
+    .from('milestones')
+    .insert({
+      account_id: ctx.accountId,
+      project_id: input.projectId,
+      title: input.title,
+      amount: input.amount,
+      currency: input.currency ?? 'USD',
+      status: input.status ?? 'pending',
+      due_at: input.dueAt ?? null,
+      paid_at: input.status === 'paid' ? new Date().toISOString() : null,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  await recordActivity({
+    projectId: input.projectId,
+    ctx,
+    verb: 'milestone.created',
+    summary: `${input.title}: ${input.amount} ${data.currency} (${data.status})`,
+    metadata: { milestone_id: data.id, amount: input.amount, currency: data.currency, status: data.status },
+  });
+  return data;
+}
+
+/** Update a milestone's money fields and audit exactly what changed. */
+export async function updateMilestone(
+  ctx: ActorContext,
+  milestoneId: string,
+  patch: {
+    title?: string;
+    amount?: number;
+    currency?: string;
+    status?: MilestoneStatus;
+    dueAt?: string | null;
+  },
+) {
+  const update: Record<string, unknown> = {};
+  if (patch.title !== undefined) update.title = patch.title;
+  if (patch.amount !== undefined) update.amount = patch.amount;
+  if (patch.currency !== undefined) update.currency = patch.currency;
+  if (patch.dueAt !== undefined) update.due_at = patch.dueAt;
+  if (patch.status !== undefined) {
+    update.status = patch.status;
+    // Keep paid_at consistent with status so owed/paid math stays honest.
+    update.paid_at = patch.status === 'paid' ? new Date().toISOString() : null;
+  }
+  const { data, error } = await db()
+    .from('milestones')
+    .update(update)
+    .eq('id', milestoneId)
+    .select()
+    .single();
+  if (error) throw error;
+  await recordActivity({
+    projectId: data.project_id,
+    ctx,
+    verb: 'milestone.updated',
+    summary: `${data.title}: ${data.amount} ${data.currency} (${data.status})`,
+    metadata: { milestone_id: milestoneId, changed: Object.keys(update) },
+  });
+  return data;
+}
+
 export async function getProjectBySlug(slug: string) {
   const { data, error } = await db()
     .from('projects')
@@ -59,6 +167,84 @@ export async function getProjectBySlug(slug: string) {
     .eq('slug', slug)
     .maybeSingle();
   if (error) throw error;
+  return data;
+}
+
+/** Slugify a project name: lowercase, spaces/punctuation → hyphens. */
+export function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/** Account-scoped: two accounts may each have a client called "Mazaya" without colliding. */
+export async function getClientByName(accountId: string, name: string) {
+  const { data, error } = await db()
+    .from('clients')
+    .select('*')
+    .eq('account_id', accountId)
+    .ilike('name', name)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function getProjectBySlugRaw(slug: string) {
+  const { data, error } = await db().from('projects').select('id, slug').eq('slug', slug).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+/** Create (or reuse by name) a client, then a project under it. Audited. */
+export async function createProject(
+  ctx: ActorContext,
+  input: {
+    name: string;
+    slug: string;
+    clientName?: string;
+    pricingModel?: string;
+    status?: string;
+  },
+) {
+  let clientId: string | null = null;
+  if (input.clientName) {
+    const existing = await getClientByName(ctx.accountId, input.clientName);
+    if (existing) {
+      clientId = existing.id;
+    } else {
+      const { data: client, error: cErr } = await db()
+        .from('clients')
+        .insert({ name: input.clientName, account_id: ctx.accountId })
+        .select()
+        .single();
+      if (cErr) throw cErr;
+      clientId = client.id;
+    }
+  }
+
+  const { data, error } = await db()
+    .from('projects')
+    .insert({
+      account_id: ctx.accountId,
+      name: input.name,
+      slug: input.slug,
+      client_id: clientId,
+      pricing_model: input.pricingModel ?? null,
+      status: input.status ?? 'active',
+    })
+    .select('*, clients(*)')
+    .single();
+  if (error) throw error;
+
+  await recordActivity({
+    projectId: data.id,
+    ctx,
+    verb: 'project.created',
+    summary: `${input.name}${input.clientName ? ` (client: ${input.clientName})` : ''}`,
+    metadata: { project_id: data.id, slug: input.slug, client_id: clientId },
+  });
   return data;
 }
 
@@ -149,6 +335,7 @@ export async function recordActivity(input: {
   metadata?: Record<string, unknown>;
 }) {
   const { error } = await db().from('activity').insert({
+    account_id: input.ctx.accountId,
     project_id: input.projectId ?? null,
     task_id: input.taskId ?? null,
     actor_type: input.ctx.actorType,
@@ -449,6 +636,7 @@ export async function createTask(
   const { data, error } = await db()
     .from('tasks')
     .insert({
+      account_id: ctx.accountId,
       project_id: input.projectId,
       title: input.title,
       description: input.description ?? null,
@@ -543,7 +731,13 @@ export async function renameSelf(ctx: ActorContext, newName: string) {
 export async function addComment(ctx: ActorContext, taskId: string, body: string, reason?: string) {
   const { data, error } = await db()
     .from('comments')
-    .insert({ task_id: taskId, actor_type: ctx.actorType, actor_agent_id: ctx.agentId, body })
+    .insert({
+      account_id: ctx.accountId,
+      task_id: taskId,
+      actor_type: ctx.actorType,
+      actor_agent_id: ctx.agentId,
+      body,
+    })
     .select()
     .single();
   if (error) throw error;
@@ -557,6 +751,113 @@ export async function addComment(ctx: ActorContext, taskId: string, body: string
     reason,
   });
   return data;
+}
+
+// ---------- notifications (agent-to-agent mentions + durable inbox) ----------
+
+/** Resolve mention names to agent rows (case-insensitive exact match). Unknown names are dropped. */
+export async function resolveAgentsByName(
+  accountId: string,
+  names: string[],
+): Promise<{ id: string; name: string }[]> {
+  if (names.length === 0) return [];
+  // Account-scoped: an @mention must never resolve to another tenant's agent.
+  const { data, error } = await db()
+    .from('agents')
+    .select('id, name')
+    .eq('account_id', accountId)
+    .is('revoked_at', null);
+  if (error) throw error;
+  const wanted = new Set(names.map((n) => n.toLowerCase()));
+  return (data ?? []).filter((a: any) => wanted.has(String(a.name).toLowerCase()));
+}
+
+/**
+ * Drop a notification row for each mentioned agent (self-mentions skipped) and record one
+ * audited `comment.mentioned` activity. Returns the recipients actually notified.
+ */
+export async function createMentionNotifications(
+  ctx: ActorContext,
+  input: {
+    projectId: string | null;
+    taskId: string;
+    commentId: string;
+    body: string;
+    recipients: { id: string; name: string }[];
+  },
+): Promise<{ id: string; name: string }[]> {
+  const recipients = input.recipients.filter((r) => r.id !== ctx.agentId);
+  if (recipients.length === 0) return [];
+
+  const rows = recipients.map((r) => ({
+    recipient_agent_id: r.id,
+    actor_agent_id: ctx.agentId,
+    account_id: ctx.accountId,
+    project_id: input.projectId,
+    task_id: input.taskId,
+    comment_id: input.commentId,
+    kind: 'mention' as const,
+    body: input.body.slice(0, 280),
+  }));
+  const { error } = await db().from('notifications').insert(rows);
+  if (error) throw error;
+
+  await recordActivity({
+    projectId: input.projectId,
+    taskId: input.taskId,
+    ctx,
+    verb: 'comment.mentioned',
+    summary: `mentioned ${recipients.map((r) => r.name).join(', ')}`.slice(0, 80),
+    metadata: { recipients: recipients.map((r) => r.name), comment_id: input.commentId },
+  });
+  return recipients;
+}
+
+const INBOX_SELECT =
+  'id, actor_agent_id, project_id, task_id, comment_id, kind, body, read_at, created_at, actor:agents!notifications_actor_agent_id_fkey(name), project:projects(name)';
+
+/** The caller's notifications, newest first. Unread-only unless includeRead. */
+export async function listInbox(
+  agentId: string,
+  opts: { includeRead?: boolean; limit?: number } = {},
+) {
+  let q = db()
+    .from('notifications')
+    .select(INBOX_SELECT)
+    .eq('recipient_agent_id', agentId)
+    .order('created_at', { ascending: false })
+    .limit(Math.min(opts.limit ?? 50, 200));
+  if (!opts.includeRead) q = q.is('read_at', null);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** One long-poll tick: unread notifications strictly newer than `sinceIso` (oldest first). */
+export async function pollInboxSince(agentId: string, sinceIso: string, limit = 50) {
+  const { data, error } = await db()
+    .from('notifications')
+    .select(INBOX_SELECT)
+    .eq('recipient_agent_id', agentId)
+    .is('read_at', null)
+    .gt('created_at', sinceIso)
+    .order('created_at', { ascending: true })
+    .limit(Math.min(limit, 200));
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** Mark the caller's notifications read. Scoped to recipient = caller; ids optional (all unread if omitted). */
+export async function markNotificationsRead(agentId: string, ids?: string[]): Promise<number> {
+  let q = db()
+    .from('notifications')
+    .update({ read_at: new Date().toISOString() })
+    .eq('recipient_agent_id', agentId)
+    .is('read_at', null);
+  if (ids && ids.length > 0) q = q.in('id', ids);
+  const { data, error } = await q.select('id');
+  if (error) throw error;
+  return (data ?? []).length;
 }
 
 export async function logSession(
@@ -575,6 +876,7 @@ export async function logSession(
   const { data, error } = await db()
     .from('session_logs')
     .insert({
+      account_id: ctx.accountId,
       project_id: input.projectId,
       task_id: input.taskId ?? null,
       agent_id: ctx.agentId,
@@ -613,6 +915,7 @@ export async function proposeBrainUpdate(
   const diff = await db()
     .from('brain_diffs')
     .insert({
+      account_id: ctx.accountId,
       project_id: input.projectId,
       section: input.section,
       operation: input.operation,
@@ -629,6 +932,7 @@ export async function proposeBrainUpdate(
   const approval = await db()
     .from('approvals')
     .insert({
+      account_id: ctx.accountId,
       project_id: input.projectId,
       kind: 'brain_diff',
       title: `Brain ${input.operation}: ${input.section}`,
@@ -720,6 +1024,9 @@ export async function resolveApproval(
   const { data: appr, error } = await db.from('approvals').select('*').eq('id', approvalId).maybeSingle();
   if (error) throw error;
   if (!appr) throw new Error('approval not found');
+  // This runs on the service-role client, which bypasses RLS — so the tenancy check must
+  // be explicit here, or an id alone would let one account resolve another's approval.
+  if (appr.account_id !== ctx.accountId) throw new Error('approval not found');
   if (appr.status !== 'open') return { status: appr.status };
 
   if (appr.kind === 'brain_diff') {
@@ -746,7 +1053,9 @@ export async function resolveApproval(
           .update({ body: after, version: existing.version + 1, updated_at: nowIso })
           .eq('id', existing.id);
       } else {
-        await db.from('brain_sections').insert({ project_id: appr.project_id, section, body: after });
+        await db
+          .from('brain_sections')
+          .insert({ account_id: appr.account_id, project_id: appr.project_id, section, body: after });
       }
     }
     if (diffId) {
@@ -784,6 +1093,7 @@ export async function requestApproval(
   const { data, error } = await db()
     .from('approvals')
     .insert({
+      account_id: ctx.accountId,
       project_id: input.projectId ?? null,
       kind: input.kind,
       title: input.title,

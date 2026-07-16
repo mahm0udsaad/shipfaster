@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { serviceClient } from '../../lib/db/client';
-import type { ActorContext } from '../../lib/db/repository';
+import { resolveSoleAccountId, type ActorContext } from '../../lib/db/repository';
 import { forbidden } from './errors';
 
 export function hashToken(raw: string): string {
@@ -15,8 +15,16 @@ export function hashToken(raw: string): string {
 export async function authenticate(rawToken: string | undefined): Promise<ActorContext> {
   if (!rawToken) throw forbidden('missing bearer token');
 
+  // The OWNER_TOKEN predates accounts and carries none of its own, so its account is
+  // resolved the same way the dashboard's is (OWNER_ACCOUNT_ID, else the sole account).
   if (process.env.OWNER_TOKEN && rawToken === process.env.OWNER_TOKEN) {
-    return { agentId: null, actorType: 'human', role: 'owner', projectScope: [] };
+    return {
+      agentId: null,
+      accountId: await resolveSoleAccountId(),
+      actorType: 'human',
+      role: 'owner',
+      projectScope: [],
+    };
   }
 
   const { data, error } = await serviceClient()
@@ -33,6 +41,7 @@ export async function authenticate(rawToken: string | undefined): Promise<ActorC
 
   return {
     agentId: data.id,
+    accountId: data.account_id,
     actorType: 'agent',
     role: data.role,
     projectScope: data.project_scope ?? [],

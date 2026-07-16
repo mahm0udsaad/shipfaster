@@ -14,13 +14,19 @@ import { requestApprovalTool } from './tools/requestApproval';
 import { whoamiTool } from './tools/whoami';
 import { claimTaskTool } from './tools/claimTask';
 import { renameSelfTool } from './tools/renameSelf';
+import { getInboxTool } from './tools/getInbox';
+import { waitForMentionsTool } from './tools/waitForMentions';
+import { markReadTool } from './tools/markRead';
+import { recordFinanceTool } from './tools/recordFinance';
+import { createProjectTool } from './tools/createProject';
 
 /**
- * The full ship-faster MCP tool surface — 12 tools (docs/section-18-19 §18.3).
+ * The full ship-faster MCP tool surface — 20 tools (docs/section-18-19 §18.3).
  * Read (6): list_projects, get_project, get_context_pack, list_tasks, get_brain, search.
- * Write (4): create_task, update_task, add_comment, log_session.
+ * Write (6): create_project, create_task, update_task, add_comment, log_session, record_finance.
  * Staged (2): propose_brain_update, request_approval.
  * Self/agency (3): whoami, claim_task, rename_self.
+ * Inbox (3): get_inbox, wait_for_mentions, mark_read — @mentions + long-poll wake.
  */
 export const TOOLS: ToolDef<any>[] = [
   listProjectsTool,
@@ -38,6 +44,11 @@ export const TOOLS: ToolDef<any>[] = [
   whoamiTool,
   claimTaskTool,
   renameSelfTool,
+  getInboxTool,
+  waitForMentionsTool,
+  markReadTool,
+  recordFinanceTool,
+  createProjectTool,
 ];
 
 export const TOOLS_BY_NAME = new Map(TOOLS.map((t) => [t.name, t]));

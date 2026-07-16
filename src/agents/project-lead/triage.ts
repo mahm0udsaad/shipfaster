@@ -209,6 +209,7 @@ export async function getProjectLeadActorContext(): Promise<ActorContext> {
   if (agent.role !== 'project_lead') throw new Error("agents row named 'project-lead' must have role project_lead");
   return {
     agentId: agent.id,
+    accountId: agent.account_id,
     actorType: 'agent',
     role: 'project_lead',
     projectScope: [],

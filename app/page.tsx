@@ -92,25 +92,25 @@ export default function Landing() {
         <div>
           <Eyebrow>the context layer for coding agents</Eyebrow>
           <h1 className="font-[var(--font-display)] text-5xl font-bold leading-[1.05] tracking-tight md:text-6xl">
-            Your coding
+            Every coding agent
             <br />
-            agents, briefed.
+            starts briefed.
           </h1>
           <p className="mt-5 max-w-md text-[16px] leading-relaxed text-[var(--color-ink-2)]">
-            shipfaster gives Claude Code and Cursor the full context of every client project — then
-            files their work back as it happens. Stop re-explaining. Start shipping.
+            shipfaster gives Claude Code, Cursor, and Codex the task, Brain, decisions, and recent
+            history for each client project, then files the work back for review.
           </p>
           <div className="mt-7 flex items-center gap-3">
             <a href="/today" className="rounded-lg bg-[var(--color-brand)] px-5 py-3 text-[15px] font-semibold text-black">
-              Start free →
+              Start with a project →
             </a>
             <a href="#how" className="rounded-lg border border-[var(--color-line-2)] px-5 py-3 text-[15px] font-semibold text-[var(--color-ink)] hover:bg-[var(--color-surface-2)]">
-              See how it works
+              See the loop
             </a>
           </div>
           <div className="mt-10">
             <div className="mb-2 text-[11px] uppercase tracking-wider text-[var(--color-faint)]">
-              Works with the tools you already pay for
+              Built for the tools already in your workflow
             </div>
             <div className="flex gap-4 text-[13px] font-medium text-[var(--color-muted)]">
               <span>Claude Code</span> · <span>Cursor</span> · <span>Codex</span>
@@ -273,16 +273,16 @@ export default function Landing() {
 
       {/* final CTA */}
       <section className="mx-auto max-w-6xl px-6 py-24 text-center">
-        <h2 className="font-[var(--font-display)] text-4xl font-bold md:text-5xl">Your coding agents, briefed.</h2>
+        <h2 className="font-[var(--font-display)] text-4xl font-bold md:text-5xl">Give every agent the full handoff.</h2>
         <p className="mx-auto mt-4 max-w-lg text-[16px] text-[var(--color-muted)]">
-          Set up your first project and connect an agent in under five minutes.
+          Create a project, capture the Brain, and send your next coding agent in with context.
         </p>
         <div className="mt-7 flex items-center justify-center gap-3">
           <a href="/today" className="rounded-lg bg-[var(--color-brand)] px-6 py-3 text-[15px] font-semibold text-black">
-            Start free
+            Start with a project
           </a>
           <a href="#how" className="rounded-lg border border-[var(--color-line-2)] px-6 py-3 text-[15px] font-semibold text-[var(--color-ink)] hover:bg-[var(--color-surface-2)]">
-            See how it works
+            See the loop
           </a>
         </div>
       </section>

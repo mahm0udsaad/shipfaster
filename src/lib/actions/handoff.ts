@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { ownerContext } from '../dashboard';
+import { getOwnerContext } from '../dashboard';
 import { createTask, getAssignableAgents } from '../db/repository';
 import { buildHandoffPrompt } from '../handoff';
 
@@ -23,7 +23,7 @@ export async function createHandoffAction(input: {
   assigneeAgentId: string;
   priority?: 'low' | 'medium' | 'high' | 'urgent';
 }) {
-  const task = await createTask(ownerContext, {
+  const task = await createTask(await getOwnerContext(), {
     projectId: input.projectId,
     title: input.title,
     description: input.description,

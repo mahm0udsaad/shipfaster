@@ -4,9 +4,9 @@ import { inScope, type ActorContext } from '../../src/lib/db/repository';
 const P1 = '11111111-1111-1111-1111-111111111111';
 const P2 = '22222222-2222-2222-2222-222222222222';
 
-const owner: ActorContext = { agentId: null, actorType: 'human', role: 'owner', projectScope: [] };
+const owner: ActorContext = { agentId: null, accountId: 'acct-1', actorType: 'human', role: 'owner', projectScope: [] };
 const worker: ActorContext = {
-  agentId: 'a', actorType: 'agent', role: 'worker', projectScope: [P1],
+  agentId: 'a', accountId: 'acct-1', actorType: 'agent', role: 'worker', projectScope: [P1],
 };
 
 describe('project scoping', () => {
