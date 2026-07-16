@@ -34,7 +34,7 @@ export const addCommentTool = defineTool({
 
     // Fan out @mentions to durable per-agent notifications.
     const names = parseMentions(input.body);
-    const resolved = await resolveAgentsByName(ctx.accountId, names);
+    const resolved = await resolveAgentsByName(ctx, names);
     const resolvedNames = new Set(resolved.map((r) => r.name.toLowerCase()));
     const unresolved = names.filter((n) => !resolvedNames.has(n));
     const notified = await createMentionNotifications(ctx, {

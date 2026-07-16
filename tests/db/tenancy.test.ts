@@ -257,8 +257,9 @@ describe('context pack cannot pull in another project task', () => {
 
 describe('account-scoped name resolution', () => {
   it('an @mention resolves only within the mentioning account', async () => {
+    const ownerB: ActorContext = { ...ownerA, accountId: ACCOUNT_B };
     nextRows = [{ id: 'agent-b', name: 'backend' }];
-    await repo.resolveAgentsByName(ACCOUNT_B, ['backend']);
+    await repo.resolveAgentsByName(ownerB, ['backend']);
     const agentRead = calls.find((c) => c.table === 'agents');
     expect(agentRead!.filters).toContainEqual(['account_id', ACCOUNT_B]);
   });

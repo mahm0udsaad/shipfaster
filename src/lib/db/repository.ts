@@ -1,4 +1,4 @@
-import { serviceClient } from './client';
+import { actorClient, serviceClient } from './client';
 
 /**
  * The data-access layer. EVERY database read/write in ship-faster goes through here.
@@ -13,10 +13,24 @@ export type ActorContext = {
   actorType: 'human' | 'agent';
   role: 'owner' | 'project_lead' | 'worker' | 'intake' | 'brain_sync';
   projectScope: string[];      // empty = all projects WITHIN the account
+  /**
+   * The actor's own short-lived database JWT, when one could be minted. Present → queries
+   * run under RLS as that actor. Absent → they fall back to the service-role key, which
+   * bypasses RLS and leaves the account filter below as the only thing separating tenants.
+   */
+  dbToken?: string;
 };
 
-function db() {
-  return serviceClient();
+/**
+ * The client a query runs on. Prefers the actor's own token so RLS binds; falls back to
+ * service-role when no token could be minted (see ActorContext.dbToken).
+ *
+ * The fallback is safe rather than silent-unsafe ONLY because every query in this file is
+ * account-filtered regardless of which client it lands on. If that ever stops being true,
+ * this fallback becomes a cross-tenant hole.
+ */
+function db(ctx?: ActorContext) {
+  return ctx?.dbToken ? actorClient(ctx.dbToken) : serviceClient();
 }
 
 /**
@@ -41,11 +55,15 @@ export type TenantTable =
 /**
  * The ONLY way this file reads a tenant table.
  *
- * Everything here runs on the service-role key, which bypasses RLS — so RLS is
- * defense-in-depth, and *this* filter is the thing actually keeping accounts apart.
- * Routing reads through a helper that cannot be constructed without an ActorContext
- * makes "I forgot the account filter" a missing-argument type error instead of a silent
- * cross-tenant read. Do not call db().from(<a TenantTable>) directly below this line.
+ * Routing reads through a helper that cannot be constructed without an ActorContext makes
+ * "I forgot the account filter" a missing-argument type error instead of a silent
+ * cross-tenant read. Do not call db().from(<a TenantTable>) directly below this line —
+ * the two places that legitimately must are marked SERVICE-ROLE BY NECESSITY.
+ *
+ * This filter and RLS are deliberately redundant. When the actor has a dbToken the database
+ * would refuse cross-tenant rows anyway; when it does not (no JWT secret configured) the
+ * query lands on the service-role key and this filter is the ONLY thing keeping accounts
+ * apart. Neither layer may be dropped on the grounds that the other exists.
  */
 function scopedSelect<T extends TenantTable, C extends string = '*'>(
   ctx: ActorContext,
@@ -54,7 +72,7 @@ function scopedSelect<T extends TenantTable, C extends string = '*'>(
 ) {
   // `columns` stays generic so supabase-js still infers row shapes from the literal select
   // string; widening it to `string` collapses every result to GenericStringError.
-  return db()
+  return db(ctx)
     .from(table)
     .select((columns ?? '*') as C)
     .eq('account_id', ctx.accountId);
@@ -66,7 +84,7 @@ function scopedUpdate<T extends TenantTable>(
   table: T,
   patch: Record<string, unknown>,
 ) {
-  return db().from(table).update(patch as never).eq('account_id', ctx.accountId);
+  return db(ctx).from(table).update(patch as never).eq('account_id', ctx.accountId);
 }
 
 /**
@@ -90,6 +108,10 @@ export function inScope(ctx: ActorContext, projectId: string): boolean {
  * This THROWS once a second account exists rather than guessing — that failure is the
  * point: it makes real auth a hard prerequisite for the first signup instead of silently
  * serving one tenant another tenant's data.
+ *
+ * SERVICE-ROLE BY NECESSITY (the second of two). It runs before an actor is established,
+ * and `accounts` is not a tenant table — it is the table that DEFINES tenants, so there is
+ * no account_id to filter on. It reads nothing but account ids.
  */
 export async function resolveSoleAccountId(): Promise<string> {
   if (process.env.OWNER_ACCOUNT_ID) return process.env.OWNER_ACCOUNT_ID;
@@ -114,6 +136,11 @@ export async function listProjects(ctx: ActorContext) {
 /**
  * Agent names are unique per account (0004), so a bare name lookup is ambiguous across
  * accounts — the caller must say which account is asking.
+ *
+ * SERVICE-ROLE BY NECESSITY (one of only two such reads here). This runs during
+ * authentication, before any actor exists to mint a token for — there is no ActorContext
+ * yet, and RLS would refuse an anonymous request. The explicit account_id filter is
+ * therefore doing the isolation work alone; do not remove it.
  */
 export async function getAgentByName(accountId: string, name: string) {
   const { data, error } = await db()
@@ -177,7 +204,7 @@ export async function createMilestone(
   },
 ) {
   await requireProject(ctx, input.projectId);
-  const { data, error } = await db()
+  const { data, error } = await db(ctx)
     .from('milestones')
     .insert({
       account_id: ctx.accountId,
@@ -259,13 +286,8 @@ export function slugify(name: string): string {
 }
 
 /** Account-scoped: two accounts may each have a client called "Mazaya" without colliding. */
-export async function getClientByName(accountId: string, name: string) {
-  const { data, error } = await db()
-    .from('clients')
-    .select('*')
-    .eq('account_id', accountId)
-    .ilike('name', name)
-    .maybeSingle();
+export async function getClientByName(ctx: ActorContext, name: string) {
+  const { data, error } = await scopedSelect(ctx, 'clients').ilike('name', name).maybeSingle();
   if (error) throw error;
   return data;
 }
@@ -294,11 +316,11 @@ export async function createProject(
 ) {
   let clientId: string | null = null;
   if (input.clientName) {
-    const existing = await getClientByName(ctx.accountId, input.clientName);
+    const existing = await getClientByName(ctx, input.clientName);
     if (existing) {
       clientId = existing.id;
     } else {
-      const { data: client, error: cErr } = await db()
+      const { data: client, error: cErr } = await db(ctx)
         .from('clients')
         .insert({ name: input.clientName, account_id: ctx.accountId })
         .select()
@@ -308,7 +330,7 @@ export async function createProject(
     }
   }
 
-  const { data, error } = await db()
+  const { data, error } = await db(ctx)
     .from('projects')
     .insert({
       account_id: ctx.accountId,
@@ -425,7 +447,7 @@ export async function recordActivity(input: {
   reason?: string;
   metadata?: Record<string, unknown>;
 }) {
-  const { error } = await db().from('activity').insert({
+  const { error } = await db(input.ctx).from('activity').insert({
     account_id: input.ctx.accountId,
     project_id: input.projectId ?? null,
     task_id: input.taskId ?? null,
@@ -531,7 +553,7 @@ export async function getAgentsViewData(ctx: ActorContext) {
 }
 
 export async function getPendingApprovalCountData(ctx: ActorContext): Promise<number> {
-  const { count, error } = await db()
+  const { count, error } = await db(ctx)
     .from('approvals')
     .select('id', { count: 'exact', head: true })
     .eq('account_id', ctx.accountId)
@@ -735,7 +757,7 @@ export async function createTask(
   },
 ) {
   await requireProject(ctx, input.projectId);
-  const { data, error } = await db()
+  const { data, error } = await db(ctx)
     .from('tasks')
     .insert({
       account_id: ctx.accountId,
@@ -835,7 +857,7 @@ export async function addComment(ctx: ActorContext, taskId: string, body: string
   const task = await getTask(ctx, taskId);
   if (!task) throw new Error('task not found');
 
-  const { data, error } = await db()
+  const { data, error } = await db(ctx)
     .from('comments')
     .insert({
       account_id: ctx.accountId,
@@ -862,16 +884,12 @@ export async function addComment(ctx: ActorContext, taskId: string, body: string
 
 /** Resolve mention names to agent rows (case-insensitive exact match). Unknown names are dropped. */
 export async function resolveAgentsByName(
-  accountId: string,
+  ctx: ActorContext,
   names: string[],
 ): Promise<{ id: string; name: string }[]> {
   if (names.length === 0) return [];
   // Account-scoped: an @mention must never resolve to another tenant's agent.
-  const { data, error } = await db()
-    .from('agents')
-    .select('id, name')
-    .eq('account_id', accountId)
-    .is('revoked_at', null);
+  const { data, error } = await scopedSelect(ctx, 'agents', 'id, name').is('revoked_at', null);
   if (error) throw error;
   const wanted = new Set(names.map((n) => n.toLowerCase()));
   return (data ?? []).filter((a: any) => wanted.has(String(a.name).toLowerCase()));
@@ -904,7 +922,7 @@ export async function createMentionNotifications(
     kind: 'mention' as const,
     body: input.body.slice(0, 280),
   }));
-  const { error } = await db().from('notifications').insert(rows);
+  const { error } = await db(ctx).from('notifications').insert(rows);
   if (error) throw error;
 
   await recordActivity({
@@ -982,7 +1000,7 @@ export async function logSession(
   },
 ) {
   await requireProject(ctx, input.projectId);
-  const { data, error } = await db()
+  const { data, error } = await db(ctx)
     .from('session_logs')
     .insert({
       account_id: ctx.accountId,
@@ -1022,7 +1040,7 @@ export async function proposeBrainUpdate(
   },
 ) {
   await requireProject(ctx, input.projectId);
-  const diff = await db()
+  const diff = await db(ctx)
     .from('brain_diffs')
     .insert({
       account_id: ctx.accountId,
@@ -1039,7 +1057,7 @@ export async function proposeBrainUpdate(
     .single();
   if (diff.error) throw diff.error;
 
-  const approval = await db()
+  const approval = await db(ctx)
     .from('approvals')
     .insert({
       account_id: ctx.accountId,
@@ -1164,7 +1182,7 @@ export async function resolveApproval(
           updated_at: nowIso,
         }).eq('id', existing.id);
       } else {
-        await db()
+        await db(ctx)
           .from('brain_sections')
           .insert({ account_id: appr.account_id, project_id: appr.project_id, section, body: after });
       }
@@ -1199,7 +1217,7 @@ export async function requestApproval(
   input: { projectId?: string; kind: string; title: string; payload?: Record<string, unknown> },
 ) {
   if (input.projectId) await requireProject(ctx, input.projectId);
-  const { data, error } = await db()
+  const { data, error } = await db(ctx)
     .from('approvals')
     .insert({
       account_id: ctx.accountId,
