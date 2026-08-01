@@ -2,11 +2,19 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { hasFullAccess, type MemberRole } from '../lib/auth/roles';
+import { signOutAction } from '../lib/actions/auth';
 
-const NAV: { href: string; label: string; badgeKey?: 'approvals' }[] = [
+/**
+ * `contentOnly` marks the items a media buyer may reach. This list decides what is DRAWN;
+ * what is permitted is decided by requireFullAccess() on each page and by the RLS policies
+ * in migration 0008. Never treat hiding a link as access control.
+ */
+const NAV: { href: string; label: string; badgeKey?: 'approvals'; contentOnly?: boolean }[] = [
   { href: '/today', label: 'Today' },
   { href: '/approvals', label: 'Approvals', badgeKey: 'approvals' },
   { href: '/projects', label: 'Projects' },
+  { href: '/content', label: 'Content', contentOnly: true },
   { href: '/clients', label: 'Clients' },
   { href: '/money', label: 'Money' },
   { href: '/agents', label: 'Agents' },
@@ -26,11 +34,14 @@ function Spark() {
 export function Sidebar({
   pendingApprovals,
   owner,
+  role,
 }: {
   pendingApprovals: number;
   owner: { name: string; plan: string };
+  role: MemberRole;
 }) {
   const path = usePathname();
+  const nav = hasFullAccess(role) ? NAV : NAV.filter((i) => i.contentOnly);
   const initials = owner.name
     .split(' ')
     .map((p) => p[0])
@@ -59,7 +70,7 @@ export function Sidebar({
       </div>
 
       <nav className="flex flex-col gap-0.5">
-        {NAV.map((item) => {
+        {nav.map((item) => {
           const active = path === item.href || path.startsWith(item.href + '/');
           const badge = item.badgeKey === 'approvals' && pendingApprovals > 0 ? pendingApprovals : null;
           return (
@@ -91,13 +102,25 @@ export function Sidebar({
           Toggle theme
         </button>
         <div className="flex items-center gap-2.5 rounded-lg border border-[var(--color-line)] px-3 py-2.5">
-          <span className="grid size-8 place-items-center rounded-full bg-[var(--color-agent)]/20 text-[12px] font-bold text-[var(--color-agent-3)]">
+          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[var(--color-agent)]/20 text-[12px] font-bold text-[var(--color-agent-3)]">
             {initials}
           </span>
-          <div className="leading-tight">
-            <div className="text-[13px] font-semibold text-[var(--color-ink)]">{owner.name}</div>
+          <div className="min-w-0 leading-tight">
+            <div className="truncate text-[13px] font-semibold text-[var(--color-ink)]">
+              {owner.name}
+            </div>
             <div className="text-[11px] text-[var(--color-faint)]">{owner.plan}</div>
           </div>
+          <form action={signOutAction} className="ml-auto">
+            <button
+              type="submit"
+              title="Sign out"
+              aria-label="Sign out"
+              className="grid size-7 place-items-center rounded-lg text-[var(--color-faint)] hover:bg-[var(--color-surface-2)] hover:text-[var(--color-ink-2)]"
+            >
+              ⏻
+            </button>
+          </form>
         </div>
       </div>
     </aside>

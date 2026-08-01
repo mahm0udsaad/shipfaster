@@ -9,9 +9,13 @@ import {
   getProjectBySlug as getProjectBySlugData,
   getProjectsOverviewData,
   getTaskDetailData,
+  listContentPosts,
+  signContentImages,
   type ActorContext,
 } from './db/repository';
 import { assembleContextPack } from './context/pack';
+import { monthFetchRange } from './calendar';
+import type { CalendarPost } from './content';
 
 /**
  * Dashboard read-views. Server-only aggregation over the live DB.
@@ -113,6 +117,36 @@ export async function getClientsView(ctx: ActorContext) {
       .reduce((s: number, m: any) => s + Number(m.amount), 0);
     return { ...c, projects: cProjects, owed };
   });
+}
+
+/**
+ * The content calendar for one month. Fetches a padded window (see monthFetchRange) and
+ * resolves every creative to something an <img> can load — uploads via a short-lived signed
+ * URL, pasted links as-is. Bucketing into day cells happens on the client, in the viewer's
+ * timezone, so a late-evening slot never drifts a day.
+ */
+export async function getContentCalendar(
+  ctx: ActorContext,
+  month: { year: number; month: number },
+  filter: { projectId?: string } = {},
+): Promise<CalendarPost[]> {
+  const range = monthFetchRange(month.year, month.month);
+  const posts = await listContentPosts(ctx, range, filter);
+  const signed = await signContentImages(posts);
+
+  return posts.map((p) => ({
+    id: p.id,
+    title: p.title,
+    body: p.body,
+    imageSrc: p.image_path ? (signed.get(p.image_path) ?? null) : p.image_url,
+    imagePath: p.image_path,
+    imageUrl: p.image_url,
+    channel: p.channel,
+    status: p.status,
+    scheduledAt: p.scheduled_at,
+    projectId: p.project_id,
+    projectName: p.projects?.name ?? null,
+  }));
 }
 
 export async function getAgentsView(ctx: ActorContext) {

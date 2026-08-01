@@ -23,3 +23,8 @@ as context and will believe it.
   repository, RLS, per-agent tokens. Not because teams were needed, but because the
   single-tenant assumption was silently unsafe (see the anon-key note in the README).
   Multi-USER (human auth, invites, roles) is still genuinely out of scope.
+- **Content calendar** — shipped (`0006`, `/content`): a media buyer schedules posts
+  (title, creative, copy, slot) on a month grid. It is a scheduling surface for humans, NOT
+  a publisher — ship-faster does not post anywhere, in keeping with "agents draft; the human
+  sends". Still open, and deliberately: week/day views, recurring slots, MCP tools so an
+  agent can propose content into the calendar, and publish integrations.

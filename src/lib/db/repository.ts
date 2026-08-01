@@ -50,7 +50,8 @@ export type TenantTable =
   | 'brain_sections'
   | 'brain_diffs'
   | 'approvals'
-  | 'notifications';
+  | 'notifications'
+  | 'content_posts';
 
 /**
  * The ONLY way this file reads a tenant table.
@@ -85,6 +86,11 @@ function scopedUpdate<T extends TenantTable>(
   patch: Record<string, unknown>,
 ) {
   return db(ctx).from(table).update(patch as never).eq('account_id', ctx.accountId);
+}
+
+/** As scopedUpdate, for deletes: a DELETE can never reach another account's row. */
+function scopedDelete<T extends TenantTable>(ctx: ActorContext, table: T) {
+  return db(ctx).from(table).delete().eq('account_id', ctx.accountId);
 }
 
 /**
@@ -1238,4 +1244,182 @@ export async function requestApproval(
     summary: input.title,
   });
   return { approval_id: data.id, status: 'open' };
+}
+
+// ---------- content calendar ----------
+export type ContentPostRow = {
+  id: string;
+  project_id: string | null;
+  title: string;
+  body: string | null;
+  image_path: string | null;
+  image_url: string | null;
+  channel: string;
+  status: string;
+  scheduled_at: string;
+  projects?: { name: string; slug: string } | null;
+};
+
+export type ContentPostInput = {
+  projectId?: string | null;
+  title: string;
+  body?: string | null;
+  imagePath?: string | null;
+  imageUrl?: string | null;
+  channel?: string;
+  status?: string;
+  scheduledAt: string;   // ISO instant
+};
+
+const CONTENT_COLUMNS =
+  'id, project_id, title, body, image_path, image_url, channel, status, scheduled_at, projects(name, slug)';
+
+/**
+ * Every post whose slot falls in [fromIso, toIso) — the calendar grid's window, which starts
+ * before the 1st and ends after the last (leading/trailing days belong to the grid too).
+ */
+export async function listContentPosts(
+  ctx: ActorContext,
+  range: { fromIso: string; toIso: string },
+  filter: { projectId?: string } = {},
+) {
+  let q = scopedSelect(ctx, 'content_posts', CONTENT_COLUMNS)
+    .gte('scheduled_at', range.fromIso)
+    .lt('scheduled_at', range.toIso)
+    .order('scheduled_at', { ascending: true });
+  if (filter.projectId) q = q.eq('project_id', filter.projectId);
+  // A project-scoped agent may only see its own projects' content; posts with no project are
+  // the owner's own and are not part of any project scope.
+  if (ctx.projectScope.length > 0) q = q.in('project_id', ctx.projectScope);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []) as unknown as ContentPostRow[];
+}
+
+export async function getContentPost(ctx: ActorContext, id: string) {
+  const { data, error } = await scopedSelect(ctx, 'content_posts', CONTENT_COLUMNS)
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw error;
+  return (data ?? null) as unknown as ContentPostRow | null;
+}
+
+export async function createContentPost(ctx: ActorContext, input: ContentPostInput) {
+  if (input.projectId) await requireProject(ctx, input.projectId);
+  const { data, error } = await db(ctx)
+    .from('content_posts')
+    .insert({
+      account_id: ctx.accountId,
+      project_id: input.projectId ?? null,
+      title: input.title,
+      body: input.body ?? null,
+      image_path: input.imagePath ?? null,
+      image_url: input.imageUrl ?? null,
+      channel: input.channel ?? 'instagram',
+      status: input.status ?? 'scheduled',
+      scheduled_at: input.scheduledAt,
+      created_by_agent_id: ctx.agentId,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  await recordActivity({
+    projectId: input.projectId ?? null,
+    ctx,
+    verb: 'content.scheduled',
+    summary: `${input.title} → ${input.scheduledAt}`,
+  });
+  return data;
+}
+
+export async function updateContentPost(
+  ctx: ActorContext,
+  id: string,
+  patch: Record<string, unknown>,
+  reason?: string,
+) {
+  // Re-read through the scoped path first: this is a write, so it must establish for itself
+  // that the post is the actor's to change (same rule as updateTask).
+  const existing = await getContentPost(ctx, id);
+  if (!existing) throw new Error('content post not found');
+  if (patch.project_id) await requireProject(ctx, patch.project_id as string);
+  const { data, error } = await scopedUpdate(ctx, 'content_posts', {
+    ...patch,
+    updated_at: new Date().toISOString(),
+  })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  await recordActivity({
+    projectId: (data.project_id as string | null) ?? null,
+    ctx,
+    verb: 'content.updated',
+    summary: `updated ${Object.keys(patch).join(', ')} on "${existing.title}"`,
+    reason,
+  });
+  return data;
+}
+
+export async function deleteContentPost(ctx: ActorContext, id: string) {
+  const existing = await getContentPost(ctx, id);
+  if (!existing) throw new Error('content post not found');
+  const { error } = await scopedDelete(ctx, 'content_posts').eq('id', id);
+  if (error) throw error;
+  if (existing.image_path) await removeContentImage(existing.image_path);
+  await recordActivity({
+    projectId: existing.project_id,
+    ctx,
+    verb: 'content.removed',
+    summary: existing.title,
+  });
+}
+
+// ---------- creative storage (private bucket, signed reads) ----------
+const CONTENT_BUCKET = 'content-media';
+const SIGNED_URL_TTL_SECONDS = 60 * 60;
+
+/**
+ * Uploads land under the account's own prefix, so an object path is never ambiguous about
+ * which tenant it belongs to. The bucket is private: the browser never touches it directly —
+ * it uploads through a server action and reads through the signed URLs below.
+ */
+export async function uploadContentImage(
+  ctx: ActorContext,
+  file: { name: string; type: string; bytes: ArrayBuffer },
+): Promise<string> {
+  const ext = (file.name.split('.').pop() ?? 'bin').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const path = `${ctx.accountId}/${crypto.randomUUID()}.${ext}`;
+  // Storage has no per-account RLS here; the account prefix above is set from ctx, not from
+  // caller input, so an actor cannot write into another account's folder.
+  const { error } = await serviceClient()
+    .storage.from(CONTENT_BUCKET)
+    .upload(path, file.bytes, { contentType: file.type, upsert: false });
+  if (error) throw error;
+  return path;
+}
+
+async function removeContentImage(path: string): Promise<void> {
+  const { error } = await serviceClient().storage.from(CONTENT_BUCKET).remove([path]);
+  if (error) throw error;
+}
+
+/**
+ * Resolve stored creatives to something an <img> can load: a short-lived signed URL for
+ * uploads, the pasted link as-is for external ones. Signed in one batch per page render.
+ */
+export async function signContentImages(
+  posts: ContentPostRow[],
+): Promise<Map<string, string>> {
+  const paths = [...new Set(posts.map((p) => p.image_path).filter((p): p is string => !!p))];
+  if (paths.length === 0) return new Map();
+  const { data, error } = await serviceClient()
+    .storage.from(CONTENT_BUCKET)
+    .createSignedUrls(paths, SIGNED_URL_TTL_SECONDS);
+  if (error) throw error;
+  const byPath = new Map<string, string>();
+  for (const row of data ?? []) {
+    if (row.signedUrl && row.path) byPath.set(row.path, row.signedUrl);
+  }
+  return byPath;
 }

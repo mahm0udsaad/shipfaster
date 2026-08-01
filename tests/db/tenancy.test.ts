@@ -12,7 +12,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 type Call = {
   table: string;
-  op: 'select' | 'insert' | 'update' | null;
+  op: 'select' | 'insert' | 'update' | 'delete' | null;
   filters: [string, unknown][];
   payload?: any;
   single?: boolean;
@@ -42,6 +42,10 @@ vi.mock('../../src/lib/db/client', () => ({
           call.payload = payload;
           return b;
         },
+        delete() {
+          call.op = 'delete';
+          return b;
+        },
         eq(c: string, v: unknown) {
           call.filters.push([c, v]);
           return b;
@@ -60,6 +64,8 @@ vi.mock('../../src/lib/db/client', () => ({
         },
         is: () => b,
         gt: () => b,
+        gte: () => b,
+        lt: () => b,
         lte: () => b,
         neq: () => b,
         not: () => b,
@@ -120,6 +126,7 @@ const TENANT_TABLES = [
   'brain_diffs',
   'approvals',
   'notifications',
+  'content_posts',
 ];
 
 beforeEach(() => {
@@ -166,6 +173,11 @@ describe('every tenant-table read is account-scoped', () => {
     await repo.getAssignableAgents(ownerA, PROJECT_A);
     await repo.listInbox(workerA);
     await repo.pollInboxSince(workerA, new Date(0).toISOString());
+    await repo.listContentPosts(ownerA, {
+      fromIso: new Date(0).toISOString(),
+      toIso: new Date().toISOString(),
+    });
+    await repo.getContentPost(ownerA, 'post-1');
 
     const reads = tenantCalls().filter((c) => c.op === 'select');
     expect(reads.length).toBeGreaterThan(20);
@@ -186,12 +198,21 @@ describe('every tenant-table read is account-scoped', () => {
     await repo.addComment(ownerA, TASK_A, 'hello');
     await repo.logSession(ownerA, { projectId: PROJECT_A, summary: 's' });
     await repo.markNotificationsRead(workerA);
+    await repo.createContentPost(ownerA, {
+      projectId: PROJECT_A,
+      title: 'post',
+      scheduledAt: new Date().toISOString(),
+    });
+    await repo.updateContentPost(ownerA, 'post-1', { scheduled_at: new Date().toISOString() });
+    await repo.deleteContentPost(ownerA, 'post-1');
 
-    const writes = tenantCalls().filter((c) => c.op === 'insert' || c.op === 'update');
+    const writes = tenantCalls().filter(
+      (c) => c.op === 'insert' || c.op === 'update' || c.op === 'delete',
+    );
     expect(writes.length).toBeGreaterThan(5);
 
     const leaky = writes.filter((c) => {
-      if (c.op === 'update') {
+      if (c.op === 'update' || c.op === 'delete') {
         return !c.filters.some(([col, val]) => col === 'account_id' && val === ACCOUNT_A);
       }
       const rows = Array.isArray(c.payload) ? c.payload : [c.payload];
@@ -224,6 +245,14 @@ describe('cross-tenant access is refused', () => {
     await expect(
       repo.createMilestone(ownerA, { projectId: PROJECT_B, title: 'm', amount: 5000 }),
     ).rejects.toThrow('project not found');
+  });
+
+  it('another account content post cannot be deleted', async () => {
+    nextRow = null; // the account-filtered lookup finds nothing
+    await expect(repo.deleteContentPost(ownerA, 'post-1')).rejects.toThrow(
+      'content post not found',
+    );
+    expect(calls.filter((c) => c.op === 'delete')).toEqual([]);
   });
 
   it('a worker cannot write against a project outside its scope', async () => {

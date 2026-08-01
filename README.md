@@ -57,6 +57,22 @@ Supabase now uses that secret only to *verify* JWTs, which is what the minting r
 if you ever disable the legacy secret, minting stops, queries fall back to the secret key
 (RLS bypassed) and it warns loudly. Only `src/lib/db/actor-token.ts` would need to change.
 
+### Content calendar (`/content`)
+A month grid for scheduling content: title, optional creative, copy, and a slot, optionally
+tied to a project. Click a day to compose, click a post to edit, drag it to another day to
+reschedule (the clock time follows). The month lives in the URL (`?m=YYYY-MM`).
+
+Creatives go to the **private** `content-media` bucket and are rendered through short-lived
+signed URLs — uploads and reads both go through the server, so no storage policy grants the
+browser anything. A pasted `https://` link is stored as-is instead.
+
+Day bucketing happens in the browser's timezone, not the server's (`src/lib/calendar.ts`);
+the server only fetches a padded window around the month. Verify the storage path against
+the live project:
+```bash
+node --env-file=.env.local --import tsx/esm scripts/verify-content.ts
+```
+
 Still open: the dashboard has no human auth yet — it runs as `getOwnerContext()`, which
 resolves the sole account and throws once a second one exists.
 
