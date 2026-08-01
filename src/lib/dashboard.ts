@@ -6,11 +6,15 @@ import {
 } from './db/repository';
 
 /**
- * The dashboard runs as the workspace owner.
+ * The workspace-owner context, for callers with NO HTTP REQUEST behind them: scripts,
+ * verification harnesses, cron. It trusts whoever calls it, which is exactly why nothing
+ * user-facing may use it.
  *
- * TODO(M7 phase 3): the account must come from the signed-in user's session
- * (account_members → auth.uid()), not from "the only account there is". Until auth
- * lands, resolveSoleAccountId() throws rather than guess once a second account exists.
+ * Dashboard pages and server actions must use getDashboardContext()/requireSession() from
+ * src/lib/auth/session.ts instead — those derive the account from the signed-in user's
+ * membership and carry that user's own token, so RLS binds as them. This function was the
+ * dashboard's context before login existed (M7 phase 3, now shipped); leaving it on a page
+ * would hand a media buyer an owner context.
  */
 export async function getOwnerContext(): Promise<ActorContext> {
   return {

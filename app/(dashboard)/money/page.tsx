@@ -1,5 +1,5 @@
 import { getMoneyOverview } from '../../../src/lib/views';
-import { getOwnerContext } from '../../../src/lib/dashboard';
+import { requireFullAccess } from '../../../src/lib/auth/session';
 import { StatusPill } from '../../../src/components/actor';
 
 export const dynamic = 'force-dynamic';
@@ -10,7 +10,7 @@ function money(n: number, c = 'USD') {
 }
 
 export default async function MoneyPage() {
-  const { byCurrency, unpaid } = await getMoneyOverview(await getOwnerContext());
+  const { byCurrency, unpaid } = await getMoneyOverview((await requireFullAccess()).ctx);
   const currencies = Object.entries(byCurrency);
 
   return (

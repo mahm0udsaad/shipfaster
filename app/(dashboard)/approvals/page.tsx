@@ -1,11 +1,11 @@
 import { getOpenApprovals } from '../../../src/lib/db/repository';
-import { getOwnerContext } from '../../../src/lib/dashboard';
+import { requireFullAccess } from '../../../src/lib/auth/session';
 import { ApprovalsClient } from './approvals-client';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ApprovalsPage() {
-  const approvals = await getOpenApprovals(await getOwnerContext());
+  const approvals = await getOpenApprovals((await requireFullAccess()).ctx);
 
   return (
     <div className="mx-auto max-w-3xl">

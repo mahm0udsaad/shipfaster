@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { getOwnerContext } from '../dashboard';
+import { requireFullAccess } from '../auth/session';
 import { updateTask } from '../db/repository';
 
 /**
@@ -16,7 +16,7 @@ export async function setTaskStatusAction(
   reason?: string,
 ) {
   await updateTask(
-    await getOwnerContext(),
+    (await requireFullAccess()).ctx,
     taskId,
     { status, updated_at: new Date().toISOString(), human_touched_at: new Date().toISOString() },
     reason ?? (status === 'done' ? 'closed by owner' : 'reopened by owner'),

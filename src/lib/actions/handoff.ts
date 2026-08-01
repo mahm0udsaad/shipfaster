@@ -1,12 +1,12 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { getOwnerContext } from '../dashboard';
+import { requireFullAccess } from '../auth/session';
 import { createTask, getAssignableAgents } from '../db/repository';
 import { buildHandoffPrompt } from '../handoff';
 
 export async function getAssignableAgentsAction(projectId: string) {
-  return getAssignableAgents(await getOwnerContext(), projectId);
+  return getAssignableAgents((await requireFullAccess()).ctx, projectId);
 }
 
 /**
@@ -23,7 +23,7 @@ export async function createHandoffAction(input: {
   assigneeAgentId: string;
   priority?: 'low' | 'medium' | 'high' | 'urgent';
 }) {
-  const task = await createTask(await getOwnerContext(), {
+  const task = await createTask((await requireFullAccess()).ctx, {
     projectId: input.projectId,
     title: input.title,
     description: input.description,

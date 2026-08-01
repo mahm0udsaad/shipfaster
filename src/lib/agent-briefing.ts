@@ -1,4 +1,4 @@
-import { getOwnerContext } from './dashboard';
+import { getDashboardContext } from './auth/session';
 import { getProject } from './db/repository';
 
 /**
@@ -8,7 +8,7 @@ import { getProject } from './db/repository';
  * so the prompt never goes stale and the agent learns the project itself.
  */
 export async function buildAgentBriefing(projectId: string): Promise<string> {
-  const project = await getProject(await getOwnerContext(), projectId);
+  const project = await getProject(await getDashboardContext(), projectId);
   if (!project) return 'Project not found.';
   const client = (project as any).clients?.name ?? '—';
 

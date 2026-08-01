@@ -1,11 +1,11 @@
 import Link from 'next/link';
 import { ActorTag, StatusPill } from '../actor';
 import { getTaskDetail } from '../../lib/views';
-import { getOwnerContext } from '../../lib/dashboard';
+import { requireFullAccess } from '../../lib/auth/session';
 import { TaskActions } from './task-actions';
 
 export async function TaskDrawer({ taskId, slug }: { taskId: string; slug: string }) {
-  const detail = await getTaskDetail(await getOwnerContext(), taskId);
+  const detail = await getTaskDetail((await requireFullAccess()).ctx, taskId);
   if (!detail) return null;
   const { task, comments, pack } = detail;
   const closeHref = `/projects/${slug}?tab=board`;

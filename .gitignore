@@ -11,3 +11,4 @@ src/lib/db/database.types.ts
 next-env.d.ts
 .mcp.json
 .codex-tokens.local
+.owner-credentials.local

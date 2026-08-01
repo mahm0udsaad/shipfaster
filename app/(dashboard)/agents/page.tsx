@@ -1,5 +1,5 @@
 import { getAgentsView } from '../../../src/lib/views';
-import { getOwnerContext } from '../../../src/lib/dashboard';
+import { requireFullAccess } from '../../../src/lib/auth/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +22,7 @@ function ago(iso: string | null) {
 }
 
 export default async function AgentsPage() {
-  const agents = await getAgentsView(await getOwnerContext());
+  const agents = await getAgentsView((await requireFullAccess()).ctx);
 
   return (
     <div className="mx-auto max-w-3xl">

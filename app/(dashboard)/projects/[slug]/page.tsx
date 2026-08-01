@@ -6,7 +6,7 @@ import {
   getBrainView,
   getActivityView,
 } from '../../../../src/lib/views';
-import { getOwnerContext } from '../../../../src/lib/dashboard';
+import { requireFullAccess } from '../../../../src/lib/auth/session';
 import { Board } from '../../../../src/components/project/board';
 import { Brain } from '../../../../src/components/project/brain';
 import { Activity } from '../../../../src/components/project/activity';
@@ -34,7 +34,7 @@ export default async function ProjectPage({
 }) {
   const { slug } = await params;
   const sp = await searchParams;
-  const ctx = await getOwnerContext();
+  const ctx = (await requireFullAccess()).ctx;
   const project = await getProjectBySlug(ctx, slug);
   if (!project) notFound();
 

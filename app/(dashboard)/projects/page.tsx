@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { getProjectsOverview } from '../../../src/lib/views';
-import { getOwnerContext } from '../../../src/lib/dashboard';
+import { requireFullAccess } from '../../../src/lib/auth/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +10,7 @@ function money(n: number, c = 'USD') {
 }
 
 export default async function ProjectsPage() {
-  const projects = await getProjectsOverview(await getOwnerContext());
+  const projects = await getProjectsOverview((await requireFullAccess()).ctx);
   const activeAgents = projects.filter((p) => p.agentActive).length;
 
   return (
