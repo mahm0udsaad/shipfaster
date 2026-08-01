@@ -57,6 +57,25 @@ Supabase now uses that secret only to *verify* JWTs, which is what the minting r
 if you ever disable the legacy secret, minting stops, queries fall back to the secret key
 (RLS bypassed) and it warns loudly. Only `src/lib/db/actor-token.ts` would need to change.
 
+### Deploying (Vercel)
+The build itself needs no secrets — a clean checkout with no env file compiles. Every
+variable below is read at REQUEST time, so a missing one deploys fine and then 500s on the
+first page load. Set all of them (Project → Settings → Environment Variables), then redeploy:
+
+| Variable | Used by | Missing ⇒ |
+| --- | --- | --- |
+| `SUPABASE_URL` | server clients | every server read throws |
+| `SUPABASE_SECRET_KEY` | `serviceClient()` — the only key that bypasses RLS | login resolves no membership; dashboard 500s |
+| `SUPABASE_JWT_SECRET` | per-agent tokens | agents fall back to the secret key (RLS bypassed, warns) |
+| `NEXT_PUBLIC_SUPABASE_URL` | browser + middleware | middleware waves every request through |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | session cookies, middleware | sign-in cannot start |
+| `OWNER_TOKEN` | MCP owner auth | MCP tools reject the owner |
+| `OWNER_ACCOUNT_ID` | optional | only needed once a second account exists |
+
+Human logins are Supabase Auth users, not env config — create them with
+`scripts/provision-user.ts` (see below), which is also the only supported way to attach one
+to an account.
+
 ### Content calendar (`/content`)
 A month grid for scheduling content: title, optional creative, copy, and a slot, optionally
 tied to a project. Click a day to compose, click a post to edit, drag it to another day to
@@ -73,8 +92,28 @@ the live project:
 node --env-file=.env.local --import tsx/esm scripts/verify-content.ts
 ```
 
-Still open: the dashboard has no human auth yet — it runs as `getOwnerContext()`, which
-resolves the sole account and throws once a second one exists.
+### Dashboard logins + roles (`0007`, `0008`)
+Sign-in is Supabase Auth over cookies. `getDashboardContext()` derives the account from the
+signed-in user's `account_members` row and carries **that user's** access token, so queries
+run under RLS as them. `getOwnerContext()` is now scripts-only.
+
+`media_buyer` is a restricted role: it reaches `/content` and nothing else. Three layers,
+deliberately redundant — RLS (`ship_faster_full_account_ids()`, the real control, since their
+browser holds a session token and PostgREST is public), `requireFullAccess()` per page, and a
+filtered sidebar (presentation only).
+
+```bash
+# create a login — password comes from the environment, never an argument
+NEW_USER_PASSWORD='…' node --env-file=.env.local --import tsx/esm \
+  scripts/provision-user.ts someone@agency.com media_buyer
+
+# prove the restriction binds at the database, not just in the UI
+MEDIA_BUYER_EMAIL=… MEDIA_BUYER_PASSWORD=… node --env-file=.env.local --import tsx/esm \
+  scripts/verify-media-buyer.ts
+```
+
+Still open: invites and self-serve signup — provisioning is owner-run, and a user with an
+auth row but no membership is refused at sign-in rather than shown an empty dashboard.
 
 Next: M2 (dashboard — Today / Board / Brain / Approvals / Money / Agents). See the plan.
 
