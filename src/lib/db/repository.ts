@@ -1265,6 +1265,7 @@ export type ContentPostInput = {
   title: string;
   body?: string | null;
   imagePath?: string | null;
+  imagePaths?: string[];
   imageUrl?: string | null;
   channel?: string;
   status?: string;
@@ -1273,6 +1274,39 @@ export type ContentPostInput = {
 
 const CONTENT_COLUMNS =
   'id, project_id, title, body, image_path, image_url, channel, status, scheduled_at, projects(name, slug)';
+
+/**
+ * `image_path` predates carousel support and is a text column. Keep legacy single-path rows
+ * valid while allowing new rows to store an ordered JSON list without a disruptive schema
+ * migration. Only server code encodes/decodes this value; the browser receives arrays.
+ */
+export function decodeContentImagePaths(value: string | null | undefined): string[] {
+  if (!value) return [];
+  if (!value.startsWith('[')) return [value];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed)
+      ? parsed.filter((path): path is string => typeof path === 'string' && path.length > 0)
+      : [];
+  } catch {
+    // A malformed historical value is still a path; treating it as one preserves the old
+    // behaviour and makes the corruption visible through a failed Storage lookup.
+    return [value];
+  }
+}
+
+export function encodeContentImagePaths(paths: readonly string[]): string | null {
+  const unique = [...new Set(paths.filter(Boolean))];
+  if (unique.length === 0) return null;
+  return unique.length === 1 ? unique[0]! : JSON.stringify(unique);
+}
+
+function assertOwnedContentImagePaths(ctx: ActorContext, paths: readonly string[]) {
+  const prefix = `${ctx.accountId}/`;
+  if (paths.some((path) => !path.startsWith(prefix))) {
+    throw new Error('content image does not belong to this account');
+  }
+}
 
 /**
  * Every post whose slot falls in [fromIso, toIso) — the calendar grid's window, which starts
@@ -1306,6 +1340,8 @@ export async function getContentPost(ctx: ActorContext, id: string) {
 
 export async function createContentPost(ctx: ActorContext, input: ContentPostInput) {
   if (input.projectId) await requireProject(ctx, input.projectId);
+  const imagePaths = input.imagePaths ?? decodeContentImagePaths(input.imagePath);
+  assertOwnedContentImagePaths(ctx, imagePaths);
   const { data, error } = await db(ctx)
     .from('content_posts')
     .insert({
@@ -1313,7 +1349,7 @@ export async function createContentPost(ctx: ActorContext, input: ContentPostInp
       project_id: input.projectId ?? null,
       title: input.title,
       body: input.body ?? null,
-      image_path: input.imagePath ?? null,
+      image_path: encodeContentImagePaths(imagePaths),
       image_url: input.imageUrl ?? null,
       channel: input.channel ?? 'instagram',
       status: input.status ?? 'scheduled',
@@ -1343,6 +1379,11 @@ export async function updateContentPost(
   const existing = await getContentPost(ctx, id);
   if (!existing) throw new Error('content post not found');
   if (patch.project_id) await requireProject(ctx, patch.project_id as string);
+  if (Object.prototype.hasOwnProperty.call(patch, 'image_path')) {
+    const nextPaths = decodeContentImagePaths(patch.image_path as string | null);
+    assertOwnedContentImagePaths(ctx, nextPaths);
+    patch.image_path = encodeContentImagePaths(nextPaths);
+  }
   const { data, error } = await scopedUpdate(ctx, 'content_posts', {
     ...patch,
     updated_at: new Date().toISOString(),
@@ -1358,6 +1399,11 @@ export async function updateContentPost(
     summary: `updated ${Object.keys(patch).join(', ')} on "${existing.title}"`,
     reason,
   });
+  if (Object.prototype.hasOwnProperty.call(patch, 'image_path')) {
+    const before = decodeContentImagePaths(existing.image_path);
+    const after = new Set(decodeContentImagePaths(data.image_path as string | null));
+    await removeUnreferencedContentImages(ctx, before.filter((path) => !after.has(path)));
+  }
   return data;
 }
 
@@ -1366,7 +1412,7 @@ export async function deleteContentPost(ctx: ActorContext, id: string) {
   if (!existing) throw new Error('content post not found');
   const { error } = await scopedDelete(ctx, 'content_posts').eq('id', id);
   if (error) throw error;
-  if (existing.image_path) await removeContentImage(existing.image_path);
+  await removeUnreferencedContentImages(ctx, decodeContentImagePaths(existing.image_path));
   await recordActivity({
     projectId: existing.project_id,
     ctx,
@@ -1399,9 +1445,22 @@ export async function uploadContentImage(
   return path;
 }
 
-async function removeContentImage(path: string): Promise<void> {
-  const { error } = await serviceClient().storage.from(CONTENT_BUCKET).remove([path]);
+async function removeUnreferencedContentImages(
+  ctx: ActorContext,
+  candidates: readonly string[],
+): Promise<void> {
+  if (candidates.length === 0) return;
+  const { data, error } = await scopedSelect(ctx, 'content_posts', 'image_path');
   if (error) throw error;
+  const referenced = new Set(
+    (data ?? []).flatMap((post: { image_path: string | null }) =>
+      decodeContentImagePaths(post.image_path),
+    ),
+  );
+  const orphaned = [...new Set(candidates)].filter((path) => !referenced.has(path));
+  if (orphaned.length === 0) return;
+  const { error: removeError } = await serviceClient().storage.from(CONTENT_BUCKET).remove(orphaned);
+  if (removeError) throw removeError;
 }
 
 /**
@@ -1411,7 +1470,7 @@ async function removeContentImage(path: string): Promise<void> {
 export async function signContentImages(
   posts: ContentPostRow[],
 ): Promise<Map<string, string>> {
-  const paths = [...new Set(posts.map((p) => p.image_path).filter((p): p is string => !!p))];
+  const paths = [...new Set(posts.flatMap((post) => decodeContentImagePaths(post.image_path)))];
   if (paths.length === 0) return new Map();
   const { data, error } = await serviceClient()
     .storage.from(CONTENT_BUCKET)

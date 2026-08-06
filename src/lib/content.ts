@@ -52,7 +52,9 @@ export type CalendarPost = {
   title: string;
   body: string | null;
   imageSrc: string | null;
+  imageSrcs: string[];
   imagePath: string | null;
+  imagePaths: string[];
   imageUrl: string | null;
   channel: string;
   status: string;
@@ -60,3 +62,17 @@ export type CalendarPost = {
   projectId: string | null;
   projectName: string | null;
 };
+
+const CAPTION_HEADING = 'الكابشن المقترح:';
+
+/** Return only the publishable caption, excluding strategy, slide order and production notes. */
+export function extractPostCaption(body: string | null | undefined): string {
+  const text = body?.trim() ?? '';
+  if (!text) return '';
+  const heading = text.indexOf(CAPTION_HEADING);
+  if (heading === -1) return text;
+  const start = heading + CAPTION_HEADING.length;
+  const rest = text.slice(start).replace(/^\s*\n?/, '');
+  const nextSection = rest.search(/\n\n[^\n]+:\s*(?:\n|$)/);
+  return (nextSection === -1 ? rest : rest.slice(0, nextSection)).trim();
+}

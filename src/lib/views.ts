@@ -10,6 +10,7 @@ import {
   getProjectsOverviewData,
   getTaskDetailData,
   listContentPosts,
+  decodeContentImagePaths,
   signContentImages,
   type ActorContext,
 } from './db/repository';
@@ -134,19 +135,29 @@ export async function getContentCalendar(
   const posts = await listContentPosts(ctx, range, filter);
   const signed = await signContentImages(posts);
 
-  return posts.map((p) => ({
-    id: p.id,
-    title: p.title,
-    body: p.body,
-    imageSrc: p.image_path ? (signed.get(p.image_path) ?? null) : p.image_url,
-    imagePath: p.image_path,
-    imageUrl: p.image_url,
-    channel: p.channel,
-    status: p.status,
-    scheduledAt: p.scheduled_at,
-    projectId: p.project_id,
-    projectName: p.projects?.name ?? null,
-  }));
+  return posts.map((p) => {
+    const imagePaths = decodeContentImagePaths(p.image_path);
+    const imageSrcs = imagePaths
+      .map((path) => signed.get(path) ?? null)
+      .filter((src): src is string => !!src);
+    if (imageSrcs.length === 0 && p.image_url) imageSrcs.push(p.image_url);
+
+    return {
+      id: p.id,
+      title: p.title,
+      body: p.body,
+      imageSrc: imageSrcs[0] ?? null,
+      imageSrcs,
+      imagePath: imagePaths[0] ?? null,
+      imagePaths,
+      imageUrl: p.image_url,
+      channel: p.channel,
+      status: p.status,
+      scheduledAt: p.scheduled_at,
+      projectId: p.project_id,
+      projectName: p.projects?.name ?? null,
+    };
+  });
 }
 
 export async function getAgentsView(ctx: ActorContext) {

@@ -5,7 +5,9 @@ import { getDashboardContext } from '../auth/session';
 import { CHANNELS, STATUSES } from '../content';
 import {
   createContentPost,
+  decodeContentImagePaths,
   deleteContentPost,
+  encodeContentImagePaths,
   updateContentPost,
   uploadContentImage,
 } from '../db/repository';
@@ -28,6 +30,7 @@ export type ContentDraft = {
   status?: string;
   imageUrl?: string | null;        // pasted external link
   imagePath?: string | null;       // uploaded object, from uploadContentImageAction
+  imagePaths?: string[];           // ordered uploaded objects for a carousel
 };
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -43,6 +46,10 @@ function clean(draft: ContentDraft) {
   const url = draft.imageUrl?.trim() || null;
   // Only http(s) — a `javascript:`/`data:` URL would be rendered straight into an <img src>.
   if (url && !/^https?:\/\//i.test(url)) throw new Error('Image URL must start with http(s)://');
+  const submittedPaths = Array.isArray(draft.imagePaths)
+    ? draft.imagePaths.filter((path): path is string => typeof path === 'string' && path.length > 0)
+    : decodeContentImagePaths(draft.imagePath);
+  const imagePaths = [...new Set(submittedPaths)];
   return {
     title,
     body: draft.body?.trim() || null,
@@ -50,8 +57,8 @@ function clean(draft: ContentDraft) {
     projectId: draft.projectId || null,
     channel,
     status,
-    imageUrl: url,
-    imagePath: draft.imagePath || null,
+    imageUrl: imagePaths.length > 0 ? null : url,
+    imagePaths,
   };
 }
 
@@ -73,7 +80,7 @@ export async function saveContentPostAction(draft: ContentDraft) {
       channel: v.channel,
       status: v.status,
       image_url: v.imageUrl,
-      image_path: v.imagePath,
+      image_path: encodeContentImagePaths(v.imagePaths),
     });
   } else {
     await createContentPost(ctx, v);

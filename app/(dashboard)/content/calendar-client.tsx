@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import {
   buildMonthGrid,
@@ -18,6 +19,7 @@ import {
   STATUSES,
   STATUS_COLOR,
   type CalendarPost,
+  extractPostCaption,
 } from '../../../src/lib/content';
 import {
   deleteContentPostAction,
@@ -28,6 +30,144 @@ import {
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const DEFAULT_HOUR = 10;
+const CONTENT_IMAGE_ORIGIN = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/\/$/, '');
+
+const lazyImageCallbacks = new WeakMap<Element, () => void>();
+let lazyImageObserver: IntersectionObserver | null = null;
+const thumbnailQueue: Array<{
+  cancelled: boolean;
+  start: (release: () => void) => void;
+}> = [];
+const MAX_CONCURRENT_THUMBNAILS = 2;
+let activeThumbnails = 0;
+
+function drainThumbnailQueue() {
+  while (activeThumbnails < MAX_CONCURRENT_THUMBNAILS) {
+    const item = thumbnailQueue.shift();
+    if (!item) return;
+    if (item.cancelled) continue;
+
+    activeThumbnails += 1;
+    let released = false;
+    item.start(() => {
+      if (released) return;
+      released = true;
+      activeThumbnails -= 1;
+      drainThumbnailQueue();
+    });
+  }
+}
+
+function queueThumbnail(start: (release: () => void) => void) {
+  const item = { cancelled: false, start };
+  thumbnailQueue.push(item);
+  drainThumbnailQueue();
+  return () => {
+    item.cancelled = true;
+  };
+}
+
+function observeLazyImage(element: Element, reveal: () => void) {
+  if (!('IntersectionObserver' in window)) {
+    reveal();
+    return () => {};
+  }
+
+  lazyImageObserver ??= new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        lazyImageCallbacks.get(entry.target)?.();
+        lazyImageCallbacks.delete(entry.target);
+        lazyImageObserver?.unobserve(entry.target);
+      }
+    },
+    { rootMargin: '160px' },
+  );
+
+  lazyImageCallbacks.set(element, reveal);
+  lazyImageObserver.observe(element);
+  return () => {
+    lazyImageCallbacks.delete(element);
+    lazyImageObserver?.unobserve(element);
+  };
+}
+
+function LazyCalendarImage({
+  src,
+  alt,
+  className,
+}: {
+  src: string;
+  alt: string;
+  className: string;
+}) {
+  const containerRef = useRef<HTMLSpanElement>(null);
+  const releaseSlotRef = useRef<(() => void) | null>(null);
+  const [shouldLoad, setShouldLoad] = useState(false);
+  const canOptimize =
+    CONTENT_IMAGE_ORIGIN.length > 0 && src.startsWith(`${CONTENT_IMAGE_ORIGIN}/storage/`);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    let cancelQueued: (() => void) | undefined;
+    const stopObserving = observeLazyImage(container, () => {
+      cancelQueued = queueThumbnail((release) => {
+        releaseSlotRef.current = release;
+        setShouldLoad(true);
+      });
+    });
+    return () => {
+      stopObserving();
+      cancelQueued?.();
+      releaseSlotRef.current?.();
+      releaseSlotRef.current = null;
+    };
+  }, [src]);
+
+  function releaseSlot() {
+    releaseSlotRef.current?.();
+    releaseSlotRef.current = null;
+  }
+
+  return (
+    <span ref={containerRef} className={`relative block ${className}`}>
+      {shouldLoad ? (
+        canOptimize ? (
+          <Image
+            src={src}
+            alt={alt}
+            fill
+            sizes="28px"
+            quality={55}
+            loading="lazy"
+            decoding="async"
+            onLoad={releaseSlot}
+            onError={releaseSlot}
+            className="object-cover"
+          />
+        ) : (
+          // Pasted image URLs can use any host, so keep a native fallback instead of opening
+          // Next's optimizer to every remote origin.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={src}
+            alt={alt}
+            width={28}
+            height={28}
+            loading="lazy"
+            decoding="async"
+            fetchPriority="low"
+            onLoad={releaseSlot}
+            onError={releaseSlot}
+            className="size-full object-cover"
+          />
+        )
+      ) : null}
+    </span>
+  );
+}
 
 type Draft = {
   id?: string;
@@ -38,8 +178,8 @@ type Draft = {
   channel: string;
   status: string;
   imageUrl: string;
-  imagePath: string;
-  preview: string | null;       // what the composer shows: signed URL, pasted URL, or blob:
+  imagePaths: string[];
+  previews: string[];           // signed URLs, a pasted URL, or local blob: previews
 };
 
 function draftFor(post: CalendarPost): Draft {
@@ -52,8 +192,8 @@ function draftFor(post: CalendarPost): Draft {
     channel: post.channel,
     status: post.status,
     imageUrl: post.imageUrl ?? '',
-    imagePath: post.imagePath ?? '',
-    preview: post.imageSrc,
+    imagePaths: post.imagePaths,
+    previews: post.imageSrcs,
   };
 }
 
@@ -67,8 +207,8 @@ function emptyDraft(day: Date): Draft {
     channel: 'instagram',
     status: 'scheduled',
     imageUrl: '',
-    imagePath: '',
-    preview: null,
+    imagePaths: [],
+    previews: [],
   };
 }
 
@@ -136,7 +276,7 @@ export function ContentCalendar({
           channel: draft.channel,
           status: draft.status,
           imageUrl: draft.imageUrl || null,
-          imagePath: draft.imagePath || null,
+          imagePaths: draft.imagePaths,
         }),
       () => setDraft(null),
     );
@@ -236,6 +376,7 @@ export function ContentCalendar({
                   // grey block in the light theme instead of a recessed cell.
                   inMonth ? '' : 'bg-[var(--color-base)]'
                 } ${overKey === key ? 'bg-[var(--color-agent)]/10' : ''}`}
+                style={{ contentVisibility: 'auto', containIntrinsicSize: '112px' }}
               >
                 <div className="mb-1 flex items-center justify-between px-1">
                   <span
@@ -279,11 +420,10 @@ export function ContentCalendar({
                       style={{ borderLeftColor: STATUS_COLOR[p.status] ?? 'var(--color-line-2)' }}
                     >
                       {p.imageSrc ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
+                        <LazyCalendarImage
                           src={p.imageSrc}
                           alt=""
-                          className="size-7 shrink-0 rounded object-cover"
+                          className="size-7 shrink-0 overflow-hidden rounded bg-[var(--color-elevated)]"
                         />
                       ) : null}
                       {/* Time above title rather than beside it: a day cell is ~180px wide, and
@@ -338,7 +478,7 @@ function Composer({
   onError,
 }: {
   draft: Draft;
-  setDraft: (d: Draft) => void;
+  setDraft: React.Dispatch<React.SetStateAction<Draft | null>>;
   projects: { id: string; name: string }[];
   busy: boolean;
   error: string | null;
@@ -348,33 +488,120 @@ function Composer({
   onError: (m: string) => void;
 }) {
   const [uploading, setUploading] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [activeImage, setActiveImage] = useState(0);
+  const [copied, setCopied] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
+  const imageCount = draft.previews.length;
+  const currentImage = imageCount > 0 ? Math.min(activeImage, imageCount - 1) : 0;
+  const caption = extractPostCaption(draft.body);
 
   useEffect(() => {
     titleRef.current?.focus();
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose();
+      const target = e.target;
+      const editing =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement;
+      if (editing || imageCount < 2) return;
+      if (e.key === 'ArrowLeft') setActiveImage((index) => (index - 1 + imageCount) % imageCount);
+      if (e.key === 'ArrowRight') setActiveImage((index) => (index + 1) % imageCount);
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [imageCount, onClose]);
 
-  const set = (patch: Partial<Draft>) => setDraft({ ...draft, ...patch });
+  const set = (patch: Partial<Draft>) =>
+    setDraft((current) => (current ? { ...current, ...patch } : current));
 
-  async function upload(file: File) {
+  async function upload(files: File[]) {
     setUploading(true);
+    const uploaded: { path: string; preview: string }[] = [];
     try {
-      const form = new FormData();
-      form.set('file', file);
-      const { path } = await uploadContentImageAction(form);
-      // Preview from the local file: the stored object is private, and its signed URL only
-      // comes back with the next page render.
-      set({ imagePath: path, imageUrl: '', preview: URL.createObjectURL(file) });
+      for (const file of files) {
+        const form = new FormData();
+        form.set('file', file);
+        const { path } = await uploadContentImageAction(form);
+        uploaded.push({ path, preview: URL.createObjectURL(file) });
+      }
+      // The stored objects are private, so newly uploaded files use local blob previews until
+      // the page refresh returns signed URLs. Pasting a URL and uploading are mutually exclusive.
+      setDraft((current) => {
+        if (!current) return current;
+        const keepingUploads = current.imagePaths.length > 0;
+        return {
+          ...current,
+          imageUrl: '',
+          imagePaths: [
+            ...(keepingUploads ? current.imagePaths : []),
+            ...uploaded.map((item) => item.path),
+          ],
+          previews: [
+            ...(keepingUploads ? current.previews : []),
+            ...uploaded.map((item) => item.preview),
+          ],
+        };
+      });
     } catch (e) {
       onError(e instanceof Error ? e.message : 'Upload failed');
     } finally {
       setUploading(false);
+    }
+  }
+
+  function removeCurrentImage() {
+    if (imageCount === 0) return;
+    const removedPreview = draft.previews[currentImage];
+    if (removedPreview?.startsWith('blob:')) URL.revokeObjectURL(removedPreview);
+    if (draft.imagePaths.length > 0) {
+      set({
+        imagePaths: draft.imagePaths.filter((_, index) => index !== currentImage),
+        previews: draft.previews.filter((_, index) => index !== currentImage),
+      });
+    } else {
+      set({ imageUrl: '', previews: [] });
+    }
+    setActiveImage((index) => Math.max(0, Math.min(index, imageCount - 2)));
+  }
+
+  async function copyCaption() {
+    if (!caption) return;
+    try {
+      await navigator.clipboard.writeText(caption);
+      setCopied(true);
+    } catch {
+      onError('Could not copy the caption');
+    }
+  }
+
+  async function downloadAll() {
+    if (imageCount === 0) return;
+    setDownloading(true);
+    try {
+      const files = await Promise.all(
+        draft.previews.map(async (src, index) => {
+          const response = await fetch(src);
+          if (!response.ok) throw new Error(`Image ${index + 1} could not be downloaded`);
+          return { blob: await response.blob(), index };
+        }),
+      );
+      for (const { blob, index } of files) {
+        const objectUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = objectUrl;
+        anchor.download = `${downloadBaseName(draft.title)}-${String(index + 1).padStart(2, '0')}.${extensionFor(blob.type)}`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(objectUrl);
+      }
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Could not download the images');
+    } finally {
+      setDownloading(false);
     }
   }
 
@@ -388,7 +615,7 @@ function Composer({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="max-h-[90dvh] w-full max-w-lg overflow-auto rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] p-5"
+        className="max-h-[92dvh] w-full max-w-3xl overflow-auto rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] p-5"
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="font-[var(--font-display)] text-[16px] font-bold text-[var(--color-ink)]">
@@ -466,66 +693,147 @@ function Composer({
 
         {/* Not a <label>: it contains buttons, and a button inside a label fights the label's
             own click behaviour. */}
-        <Block label="Image (optional)">
-          <div className="flex items-start gap-3">
-            <div className="grid size-20 shrink-0 place-items-center overflow-hidden rounded-lg border border-dashed border-[var(--color-line-2)] bg-[var(--color-base)]">
-              {draft.preview ? (
+        <Block label={`Images${imageCount > 0 ? ` (${imageCount})` : ' (optional)'}`}>
+          <div className="overflow-hidden rounded-xl border border-[var(--color-line)] bg-[var(--color-base)]">
+            <div className="relative grid aspect-[16/10] place-items-center overflow-hidden">
+              {imageCount > 0 ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={draft.preview} alt="" className="size-full object-cover" />
+                <img
+                  src={draft.previews[currentImage]}
+                  alt={`${draft.title || 'Post'} creative ${currentImage + 1}`}
+                  loading="eager"
+                  decoding="async"
+                  fetchPriority="high"
+                  className="size-full object-contain"
+                />
               ) : (
-                <span className="text-[11px] text-[var(--color-faint)]">none</span>
+                <span className="text-[12px] text-[var(--color-faint)]">No images attached</span>
               )}
+              {imageCount > 1 ? (
+                <>
+                  <button
+                    onClick={() => setActiveImage((index) => (index - 1 + imageCount) % imageCount)}
+                    aria-label="Previous image"
+                    className="absolute left-3 grid size-9 place-items-center rounded-full bg-black/65 text-xl text-white hover:bg-black/80"
+                  >
+                    ‹
+                  </button>
+                  <button
+                    onClick={() => setActiveImage((index) => (index + 1) % imageCount)}
+                    aria-label="Next image"
+                    className="absolute right-3 grid size-9 place-items-center rounded-full bg-black/65 text-xl text-white hover:bg-black/80"
+                  >
+                    ›
+                  </button>
+                  <span className="absolute bottom-3 right-3 rounded-full bg-black/65 px-2.5 py-1 text-[11px] font-semibold tabular-nums text-white">
+                    {currentImage + 1} / {imageCount}
+                  </span>
+                </>
+              ) : null}
             </div>
-            <div className="flex min-w-0 flex-1 flex-col gap-2">
-              <div className="flex gap-2">
+
+            {imageCount > 1 ? (
+              <div className="flex gap-2 overflow-x-auto border-t border-[var(--color-line)] p-2">
+                {draft.previews.map((src, index) => (
+                  <button
+                    key={`${src}-${index}`}
+                    onClick={() => setActiveImage(index)}
+                    aria-label={`Show image ${index + 1}`}
+                    aria-current={index === currentImage}
+                    className={`size-14 shrink-0 overflow-hidden rounded-md border-2 ${
+                      index === currentImage
+                        ? 'border-[var(--color-brand)]'
+                        : 'border-transparent opacity-70 hover:opacity-100'
+                    }`}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={src}
+                      alt=""
+                      width={56}
+                      height={56}
+                      loading="lazy"
+                      decoding="async"
+                      fetchPriority="low"
+                      className="size-full object-cover"
+                    />
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              className="rounded-lg border border-[var(--color-line-2)] px-3 py-1.5 text-[12px] font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-surface-2)] disabled:opacity-50"
+            >
+              {uploading ? 'Uploading…' : imageCount > 0 ? 'Add images' : 'Upload images'}
+            </button>
+            {imageCount > 0 ? (
+              <>
                 <button
-                  onClick={() => fileRef.current?.click()}
-                  disabled={uploading}
+                  onClick={() => void downloadAll()}
+                  disabled={downloading}
                   className="rounded-lg border border-[var(--color-line-2)] px-3 py-1.5 text-[12px] font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-surface-2)] disabled:opacity-50"
                 >
-                  {uploading ? 'Uploading…' : 'Upload'}
+                  {downloading ? 'Downloading…' : `Download all (${imageCount})`}
                 </button>
-                {draft.preview && (
-                  <button
-                    onClick={() => set({ imagePath: '', imageUrl: '', preview: null })}
-                    className="rounded-lg border border-[var(--color-line-2)] px-3 py-1.5 text-[12px] text-[var(--color-muted)] hover:bg-[var(--color-surface-2)]"
-                  >
-                    Remove
-                  </button>
-                )}
-              </div>
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp,image/gif"
-                hidden
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) void upload(f);
-                  e.target.value = '';
-                }}
-              />
-              <input
-                value={draft.imageUrl}
-                onChange={(e) =>
-                  set({ imageUrl: e.target.value, imagePath: '', preview: e.target.value || null })
-                }
-                placeholder="…or paste an image URL"
-                className={inputClass}
-              />
-            </div>
+                <button
+                  onClick={removeCurrentImage}
+                  className="rounded-lg border border-[var(--color-line-2)] px-3 py-1.5 text-[12px] text-[var(--color-muted)] hover:bg-[var(--color-surface-2)]"
+                >
+                  Remove current
+                </button>
+              </>
+            ) : null}
           </div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            multiple
+            hidden
+            onChange={(e) => {
+              const files = Array.from(e.target.files ?? []);
+              if (files.length > 0) void upload(files);
+              e.target.value = '';
+            }}
+          />
+          <input
+            value={draft.imageUrl}
+            onChange={(e) => {
+              const imageUrl = e.target.value;
+              set({ imageUrl, imagePaths: [], previews: imageUrl ? [imageUrl] : [] });
+              setActiveImage(0);
+            }}
+            placeholder="…or paste one external image URL"
+            className={`${inputClass} mt-2`}
+          />
         </Block>
 
-        <Field label="Content">
+        <Block label="Content">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <p className="text-[11px] text-[var(--color-faint)]">
+              Copy caption excludes strategy and production notes.
+            </p>
+            <button
+              onClick={() => void copyCaption()}
+              disabled={!caption}
+              className="shrink-0 rounded-lg border border-[var(--color-line-2)] px-3 py-1.5 text-[12px] font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-surface-2)] disabled:opacity-50"
+            >
+              {copied ? 'Caption copied ✓' : 'Copy caption'}
+            </button>
+          </div>
           <textarea
             value={draft.body}
             onChange={(e) => set({ body: e.target.value })}
-            rows={5}
+            rows={8}
             placeholder="Caption, hooks, hashtags…"
             className={`${inputClass} resize-y leading-relaxed`}
           />
-        </Field>
+        </Block>
 
         {error && (
           <p className="mb-3 text-[12px] text-[var(--color-blocked-2)]" role="alert">
@@ -560,6 +868,22 @@ function Composer({
       </div>
     </div>
   );
+}
+
+function downloadBaseName(title: string): string {
+  const safe = title
+    .normalize('NFKD')
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 70);
+  return safe || 'content-post';
+}
+
+function extensionFor(mime: string): string {
+  if (mime.includes('jpeg')) return 'jpg';
+  if (mime.includes('webp')) return 'webp';
+  if (mime.includes('gif')) return 'gif';
+  return 'png';
 }
 
 const inputClass =
