@@ -813,10 +813,10 @@ function Composer({
           />
         </Block>
 
-        <Block label="Content">
+        <Block label="Egyptian Caption (Media Buyer Copy)">
           <div className="mb-2 flex items-center justify-between gap-3">
             <p className="text-[11px] text-[var(--color-faint)]">
-              Copy caption excludes strategy and production notes.
+              Clean Egyptian Arabic caption — ready for media buyer to copy.
             </p>
             <button
               onClick={() => void copyCaption()}
