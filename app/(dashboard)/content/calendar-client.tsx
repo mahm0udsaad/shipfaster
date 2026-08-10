@@ -491,6 +491,7 @@ function Composer({
   const [downloading, setDownloading] = useState(false);
   const [activeImage, setActiveImage] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [isFullWindow, setIsFullWindow] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const imageCount = draft.previews.length;
@@ -500,7 +501,13 @@ function Composer({
   useEffect(() => {
     titleRef.current?.focus();
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        if (isFullWindow) {
+          setIsFullWindow(false);
+        } else {
+          onClose();
+        }
+      }
       const target = e.target;
       const editing =
         target instanceof HTMLInputElement ||
@@ -512,7 +519,7 @@ function Composer({
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [imageCount, onClose]);
+  }, [imageCount, isFullWindow, onClose]);
 
   const set = (patch: Partial<Draft>) =>
     setDraft((current) => (current ? { ...current, ...patch } : current));
@@ -695,17 +702,26 @@ function Composer({
             own click behaviour. */}
         <Block label={`Images${imageCount > 0 ? ` (${imageCount})` : ' (optional)'}`}>
           <div className="overflow-hidden rounded-xl border border-[var(--color-line)] bg-[var(--color-base)]">
-            <div className="relative grid aspect-[16/10] place-items-center overflow-hidden">
+            <div className="relative flex min-h-[320px] max-h-[520px] items-center justify-center overflow-hidden bg-black/40 p-2">
               {imageCount > 0 ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={draft.previews[currentImage]}
-                  alt={`${draft.title || 'Post'} creative ${currentImage + 1}`}
-                  loading="eager"
-                  decoding="async"
-                  fetchPriority="high"
-                  className="size-full object-contain"
-                />
+                <div
+                  onClick={() => setIsFullWindow(true)}
+                  className="group relative flex max-h-[500px] w-full items-center justify-center cursor-pointer overflow-hidden rounded-lg"
+                  title="Click for full window view"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={draft.previews[currentImage]}
+                    alt={`${draft.title || 'Post'} creative ${currentImage + 1}`}
+                    loading="eager"
+                    decoding="async"
+                    fetchPriority="high"
+                    className="max-h-[490px] w-auto max-w-full rounded-md object-contain shadow-lg transition-transform duration-200 group-hover:scale-[1.01]"
+                  />
+                  <span className="absolute top-3 right-3 hidden items-center gap-1.5 rounded-lg bg-black/80 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur-sm group-hover:flex">
+                    🔍 Full window view
+                  </span>
+                </div>
               ) : (
                 <span className="text-[12px] text-[var(--color-faint)]">No images attached</span>
               )}
@@ -714,18 +730,18 @@ function Composer({
                   <button
                     onClick={() => setActiveImage((index) => (index - 1 + imageCount) % imageCount)}
                     aria-label="Previous image"
-                    className="absolute left-3 grid size-9 place-items-center rounded-full bg-black/65 text-xl text-white hover:bg-black/80"
+                    className="absolute left-3 grid size-9 place-items-center rounded-full bg-black/65 text-xl text-white hover:bg-black/80 z-10"
                   >
                     ‹
                   </button>
                   <button
                     onClick={() => setActiveImage((index) => (index + 1) % imageCount)}
                     aria-label="Next image"
-                    className="absolute right-3 grid size-9 place-items-center rounded-full bg-black/65 text-xl text-white hover:bg-black/80"
+                    className="absolute right-3 grid size-9 place-items-center rounded-full bg-black/65 text-xl text-white hover:bg-black/80 z-10"
                   >
                     ›
                   </button>
-                  <span className="absolute bottom-3 right-3 rounded-full bg-black/65 px-2.5 py-1 text-[11px] font-semibold tabular-nums text-white">
+                  <span className="absolute bottom-3 right-3 rounded-full bg-black/65 px-2.5 py-1 text-[11px] font-semibold tabular-nums text-white z-10">
                     {currentImage + 1} / {imageCount}
                   </span>
                 </>
@@ -774,6 +790,12 @@ function Composer({
             {imageCount > 0 ? (
               <>
                 <button
+                  onClick={() => setIsFullWindow(true)}
+                  className="rounded-lg border border-[var(--color-brand)]/50 bg-[var(--color-brand)]/10 px-3 py-1.5 text-[12px] font-semibold text-[var(--color-ink)] hover:bg-[var(--color-brand)]/20"
+                >
+                  🔍 Full window view
+                </button>
+                <button
                   onClick={() => void downloadAll()}
                   disabled={downloading}
                   className="rounded-lg border border-[var(--color-line-2)] px-3 py-1.5 text-[12px] font-semibold text-[var(--color-ink-2)] hover:bg-[var(--color-surface-2)] disabled:opacity-50"
@@ -789,6 +811,90 @@ function Composer({
               </>
             ) : null}
           </div>
+
+          {isFullWindow && imageCount > 0 && (
+            <div
+              className="fixed inset-0 z-[100] flex flex-col justify-between bg-black/92 p-4 backdrop-blur-md"
+              onClick={() => setIsFullWindow(false)}
+              role="dialog"
+              aria-modal
+              aria-label="Full window image view"
+            >
+              <div
+                className="flex w-full items-center justify-between text-white"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-[15px] font-bold text-white">
+                    {draft.title || 'Post Creative'}
+                  </span>
+                  <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-[11px] font-semibold tabular-nums text-white">
+                    {currentImage + 1} / {imageCount}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setIsFullWindow(false)}
+                  aria-label="Close full window view"
+                  className="grid size-9 place-items-center rounded-lg bg-white/10 text-xl font-bold text-white hover:bg-white/25"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div
+                className="relative flex flex-1 items-center justify-center p-4 overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={draft.previews[currentImage]}
+                  alt={`Full view creative ${currentImage + 1}`}
+                  className="max-h-[82vh] max-w-[92vw] rounded-lg object-contain shadow-2xl"
+                />
+
+                {imageCount > 1 && (
+                  <>
+                    <button
+                      onClick={() => setActiveImage((index) => (index - 1 + imageCount) % imageCount)}
+                      aria-label="Previous image"
+                      className="absolute left-6 grid size-12 place-items-center rounded-full bg-black/75 text-2xl text-white shadow-xl hover:bg-black"
+                    >
+                      ‹
+                    </button>
+                    <button
+                      onClick={() => setActiveImage((index) => (index + 1) % imageCount)}
+                      aria-label="Next image"
+                      className="absolute right-6 grid size-12 place-items-center rounded-full bg-black/75 text-2xl text-white shadow-xl hover:bg-black"
+                    >
+                      ›
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {imageCount > 1 && (
+                <div
+                  className="flex justify-center gap-2 overflow-x-auto p-2"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {draft.previews.map((src, index) => (
+                    <button
+                      key={`full-${src}-${index}`}
+                      onClick={() => setActiveImage(index)}
+                      className={`size-14 shrink-0 overflow-hidden rounded-lg border-2 ${
+                        index === currentImage
+                          ? 'border-[var(--color-brand)]'
+                          : 'border-transparent opacity-60 hover:opacity-100'
+                      }`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={src} alt="" className="size-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           <input
             ref={fileRef}
             type="file"
