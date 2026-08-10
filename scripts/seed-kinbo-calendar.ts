@@ -44,7 +44,7 @@ type SeedPost = {
 
 const posts: SeedPost[] = [
   {
-    day: '06', time: '20:30', title: 'ابدأ من هنا — KINBO وصل',
+    day: '06', time: '20:30', title: '[Story] ابدأ من هنا — KINBO وصل',
     phase: 'Launch foundation', goal: 'تعريف البراند وبناء أول بوست مثبت',
     hook: 'أول مرة تشوف KINBO؟ دي أسرع لفة في اللي موجود عندنا.',
     format: 'Pinned carousel · 6 slides',
@@ -62,7 +62,7 @@ const posts: SeedPost[] = [
     notes: 'Slide 1 واجهة المكان + “ابدأ من هنا”. Slides 2–5 اختيارات حقيقية من الأصول الجاهزة. Slide 6 اللوجو + واتساب + القاهرة والجيزة. ثبّت البوست في أول خانة.', channel: 'instagram',
   },
   {
-    day: '07', time: '21:00', title: '5 اختيارات في 9 ثواني',
+    day: '07', time: '21:00', title: '[Story] 5 اختيارات في 9 ثواني',
     phase: 'Launch foundation', goal: 'أول Reel اكتشاف لغير المتابعين',
     hook: 'لو الـplain مش مودك، شوف الخمس اختيارات دول.',
     format: 'Discovery Reel · 9 sec · 9:16',
@@ -76,7 +76,7 @@ const posts: SeedPost[] = [
     notes: '0–1s hook كبير، ثم 1.5 ثانية لكل اختيار. اعمل pan/zoom خفيف من الصور الـ4:5 داخل canvas 9:16. اختار audio native وقت النشر وأضف Cairo geotag.', channel: 'tiktok',
   },
   {
-    day: '08', time: '20:00', title: 'دليل الألوان — احفظه قبل ما تختار',
+    day: '08', time: '20:00', title: '[Story] دليل الألوان — احفظه قبل ما تختار',
     phase: 'Launch foundation', goal: 'إظهار تنوع الكتالوج وبناء ثاني بوست مثبت',
     hook: 'كل الـcolourways الجاهزة في Carousel واحد.',
     format: 'Saveable colourway carousel · 8 slides',
@@ -91,7 +91,7 @@ const posts: SeedPost[] = [
     notes: 'كل أصل 4:5 يبقى Slide كامل من غير إعادة تصميم. ضيف رقم Slide صغير فقط. آخر Slide عليه CTA بسيط فوق مساحة فاضية لو متاحة. ثبّت البوست في الخانة الثانية.', channel: 'instagram',
   },
   {
-    day: '09', time: '18:30', title: 'تأسيس Highlights قبل جلب الزيارات',
+    day: '09', time: '18:30', title: '[Story] تأسيس Highlights قبل جلب الزيارات',
     phase: 'Launch foundation', goal: 'تحويل البروفايل الجديد إلى واجهة مفهومة',
     hook: 'New here? كل اللي محتاج تعرفه في 4 Stories.',
     format: 'Stories · 4 frames + Highlights setup',
@@ -107,7 +107,7 @@ const posts: SeedPost[] = [
     notes: 'مفيش Poll لأن الحساب جديد. كل Frame يشرح معلومة واحدة. آخر Frame فيه زر/لينك واتساب إن كان متاح.', channel: 'instagram',
   },
   {
-    day: '10', time: '21:15', title: '3 Cargo Fits للرجالة',
+    day: '10', time: '21:15', title: '[Story] 3 Cargo Fits للرجالة',
     phase: 'Launch foundation', goal: 'اكتشاف من البحث والـ Reels',
     hook: '3 cargo outfits تقدر تبدأ بيهم اللوك كله.',
     format: 'Discovery Reel · 9 sec · 9:16',
@@ -123,7 +123,7 @@ const posts: SeedPost[] = [
     notes: 'استخدم الـ 9:16 الأصلية. Hook في أول ثانية، ثم اسم كل fit على الشاشة. أضف كلمات البحث “cargo pants Egypt / ملابس رجالي القاهرة” طبيعيًا في الكابشن. Pin في الخانة الثالثة بعد النشر.', channel: 'tiktok',
   },
   {
-    day: '11', time: '20:30', title: 'السعر واضح — 650 + 650',
+    day: '11', time: '20:30', title: '[Story] السعر واضح — 650 + 650',
     phase: 'Product clarity', goal: 'إزالة غموض السعر وبناء ثقة',
     hook: 'اللوك ده قطعتين، وكل قطعة سعرها واضح.',
     format: 'Price carousel · 3 slides',
@@ -137,24 +137,44 @@ const posts: SeedPost[] = [
     ],
     notes: 'Slide 3 يلخص: T-shirt 650 / Shorts 650 / التوفر يتأكد. لا تضف Buy 2 Get 1 أو مصاريف توصيل غير مؤكدة.', channel: 'instagram',
   },
-  {
-    day: '12', time: '20:00', title: 'Lost Paradise — كل الزوايا',
-    phase: 'Product clarity', goal: 'Carousel قابل للحفظ يشرح المنتج بدل سؤال جمهور غير موجود',
-    hook: 'قبل ما تطلب، شوف اللوك كامل من كل زاوية.',
-    format: 'Product carousel · 5 slides',
-    platforms: 'Instagram Feed + Facebook',
-    caption: 'قبل ما تطلب، شوف اللوك كاملاً من كل زاوية ✨ Lost Paradise نسقناه مع cargo shorts باللون البيج والبورجاندي. شوف التفاصيل وابعت Screenshot باللون والمقاس على واتساب. التوصيل داخل القاهرة والجيزة. #KINBO #LostParadise #كارجو #ستايل_رجالي',
-    cta: 'Save + ابعت Screenshot للون المطلوب على WhatsApp.',
-        cover: 'kinbo-website/public/images/generated/cargo-shorts-khaki-burgundy-outfit.png',
+    {
+    day: '12',
+    time: '18:00',
+    title: '🔥 CAMPAIGN — BUY 2, GET 1 FREE (All Collection Master Racks)',
+    phase: 'Conversion',
+    goal: 'BUY 2 GET 1 FREE campaign launch',
+    hook: 'عرض BUY 2 GET 1 FREE شغال رسمي على كل ألوان كولكشن KINBO!',
+    format: 'Campaign Carousel · 8 slides · 1:1',
+    platforms: 'Instagram + Facebook + TikTok',
+    channel: 'instagram',
+    caption: `🔥 عرض BUY 2, GET 1 FREE شغال رسمي على كل كولكشن KINBO!
+اختار أي تيشيرتين وخد التالت هدية مجاناً 🎁
+
+📌 أسعار العرض:
+- التيشيرت بـ 650 ج
+- 2 تيشيرت + 1 مجاناً = 3 تيشيرتات بـ 1,300 ج بدل 1,950 ج!
+- التوصيل سريع داخل القاهرة والجيزة.
+
+📲 للطلب المباشر على واتساب (3 خطوات بس):
+1. ابعت Screenshot للشكل واللون اللي عجبك.
+2. حدد المقاس (L - XL - XXL - Oversized).
+3. اكتب العنوان ورقم التليفون للتوصيل.`,
+    cta: 'WhatsApp order: BUY 2 GET 1 FREE',
+    cover: 'kinbo/new-phone-shots/generated/batch-11-sorted-workable/masters/b11-stay-sharp-black-white-green-buy2get1-approved-v2.png',
     assets: [
-      'kinbo-website/public/images/generated/cargo-shorts-khaki-burgundy-outfit.png',
-      'kinbo-website/public/images/generated/cargo-shorts-lost-paradise-flatlay.png',
-      'kinbo-website/public/images/generated/cargo-shorts-burgundy-flatlay.png',
+      'kinbo/new-phone-shots/generated/batch-11-sorted-workable/masters/b11-stay-sharp-black-white-green-buy2get1-approved-v2.png',
+      'kinbo/new-phone-shots/generated/batch-11-sorted-workable/masters/b11-make-money-grey-white-buy2get1-studio-rack-concept-v1.png',
+      'kinbo/new-phone-shots/generated/batch-11-sorted-workable/masters/b11-corex-green-burgundy-black-buy2get1-studio-rack-concept-v1.png',
+      'kinbo/new-phone-shots/generated/batch-11-sorted-workable/masters/b11-new-cast-green-burgundy-buy2get1-studio-rack-concept-v1.png',
+      'kinbo/new-phone-shots/generated/batch-11-sorted-workable/masters/b11-bull-stop-ying-green-burgundy-blue-buy2get1-studio-rack-concept-v1.png',
+      'kinbo/new-phone-shots/generated/batch-11-sorted-workable/masters/b11-horse-luck-black-white-buy2get1-studio-rack-concept-v1.png',
+      'kinbo/new-phone-shots/generated/batch-03-cargo-trousers/masters/b03-cargo-shorts-khaki-white-silent-night-front-back-studio-rack-master-v1.png',
+      'kinbo/new-phone-shots/generated/batch-03-cargo-trousers/masters/b03-cargo-shorts-khaki-black-bad-intentions-studio-rack-master-v1.png',
     ],
-    notes: 'Slide order زي القائمة. متكررش 4:5 و9:16 لنفس الكادر داخل الـCarousel؛ استخدمهم للـReels/Stories فقط.', channel: 'instagram',
+    notes: 'BUY 2 GET 1 FREE Primary Campaign Post scheduled for Aug 12.',
   },
   {
-    day: '13', time: '21:00', title: 'NEW CAST — لونين وزاوية أوضح',
+    day: '13', time: '21:00', title: '[Story] NEW CAST — لونين وزاوية أوضح',
     phase: 'Discovery', goal: 'Reel بحث لمنتج graphic tee',
     hook: 'لو بتحب graphic tees مختلفة، ركّز في التصميم ده.',
     format: 'Discovery Reel · 7 sec · 9:16',
@@ -168,7 +188,7 @@ const posts: SeedPost[] = [
     notes: 'ابدأ بالـmaroon ثم green، واختم بصورة المنتج. حط الصور على canvas 9:16 من غير stretch، واسم اللون على الشاشة.', channel: 'tiktok',
   },
   {
-    day: '14', time: '20:30', title: 'من صورة القطعة للـColourway',
+    day: '14', time: '20:30', title: '[Story] من صورة القطعة للـColourway',
     phase: 'Discovery', goal: 'Carousel يربط شكل القطعة باختيارات اللون المتاحة في الصور',
     hook: 'شوف القطعة لوحدها، وبعدها قارن الـcolourways.',
     format: 'Product plate + colourway carousel · 8 slides',
@@ -186,7 +206,7 @@ const posts: SeedPost[] = [
     notes: 'رتّب كل صور المنتج جنب بعض. الصور أصلًا 4:5؛ لا تضف borders أو mockups. الغرض حفظ ومقارنة، مش ادعاء إن كل الألوان متاحة قبل تأكيد واتساب.', channel: 'instagram',
   },
   {
-    day: '15', time: '21:15', title: 'COREX + Beige Cargo',
+    day: '15', time: '21:15', title: '[Story] COREX + Beige Cargo',
     phase: 'Discovery', goal: 'إعادة تدوير نفس اللوك بصيغ مناسبة لكل placement',
     hook: 'Green + beige = لوك كامل بلونين.',
     format: 'Discovery Reel · 8 sec · 9:16',
@@ -201,7 +221,7 @@ const posts: SeedPost[] = [
     notes: 'استخدم 9:16 كأساس، والـ4:5/square كـ punch-in transitions. Labels: COREX / BEIGE CARGO / CAIRO + GIZA. ممنوع سعر للبنطلون.', channel: 'tiktok',
   },
   {
-    day: '16', time: '18:00', title: 'طريقة الطلب في 3 خطوات',
+    day: '16', time: '18:00', title: '[Story] طريقة الطلب في 3 خطوات',
     phase: 'Profile trust', goal: 'Highlight ثابت يقلل أسئلة الطلب',
     hook: 'الطلب من KINBO بياخد 3 خطوات.',
     format: 'Stories · 4 frames + ORDER Highlight',
@@ -216,7 +236,7 @@ const posts: SeedPost[] = [
     notes: 'مفيش Question sticker في أول أسبوع. وضّح الخطوات فقط. ما نذكرش مقاسات أو سرعة/سعر توصيل غير مؤكد.', channel: 'instagram',
   },
   {
-    day: '17', time: '21:00', title: 'BAD + Navy Cargo',
+    day: '17', time: '21:00', title: '[Story] BAD + Navy Cargo',
     phase: 'Discovery', goal: 'Reel لوك عالي التباين لغير المتابعين',
     hook: 'Cream فوق، navy تحت — اللوك جاهز.',
     format: 'Discovery Reel · 8 sec · 9:16',
@@ -231,7 +251,7 @@ const posts: SeedPost[] = [
     notes: 'ابدأ crop على BAD ثم reveal للوك. استخدم مشتقات النسب المختلفة كـ transitions. ممنوع سعر للبنطلون.', channel: 'tiktok',
   },
   {
-    day: '18', time: '20:30', title: 'SILENT NIGHT — Front / Back / Details',
+    day: '18', time: '20:30', title: '[Story] SILENT NIGHT — Front / Back / Details',
     phase: 'Product education', goal: 'إثبات تفاصيل المنتج من أصل واحد موثوق',
     hook: 'متطلبش قبل ما تشوف الـfront والـback.',
     format: 'Detail carousel · 4 slides/crops',
@@ -247,7 +267,7 @@ const posts: SeedPost[] = [
     notes: 'Slide 1 النسخة البيضاء front/back. Slide 2 النسخة السوداء. Slide 3 اللوك على الـrack. Slide 4 crop للـcargo + CTA. دي الأصول الوحيدة المعتمدة من Batch 1/2؛ لا تدخل AWAKEN أو patterned masters المعلّقة.', channel: 'instagram',
   },
   {
-    day: '19', time: '20:00', title: 'Beach Flat-Lays — لوكين للصيف',
+    day: '19', time: '20:00', title: '[Story] Beach Flat-Lays — لوكين للصيف',
     phase: 'Product education', goal: 'Carousel كامل للفئة بدل Poll بلا جمهور',
     hook: 'اللوك على الرمل أوضح من المانيكان.',
     format: 'Beach flat-lay carousel · 4 slides',
@@ -262,7 +282,7 @@ const posts: SeedPost[] = [
     notes: 'الـflat-lay هو الـhero. السعر الرقمي للتيشيرت فقط؛ الشورت Price on WhatsApp لحد التأكيد. المانيكان/الـwhite background مش ضمن الكاروسيل.', channel: 'instagram',
   },
   {
-    day: '20', time: '21:15', title: 'LOST PARADISE — من Flat Lay للـFit',
+    day: '20', time: '21:15', title: '[Story] LOST PARADISE — من Flat Lay للـFit',
     phase: 'Discovery', goal: 'Reel تحول بصري باستخدام مشتقات نفس الأصل',
     hook: 'من flat lay للوك كامل في 8 ثواني.',
     format: 'Transformation Reel · 8 sec · 9:16',
@@ -276,7 +296,7 @@ const posts: SeedPost[] = [
     notes: 'ابدأ بالـ9:16 الأصلي. Cuts على beat: story → 4:5 → square detail → full outfit. لا تعمل stretch.', channel: 'tiktok',
   },
   {
-    day: '21', time: '20:30', title: '3 لوكات للويك إند',
+    day: '21', time: '20:30', title: '[Story] 3 لوكات للويك إند',
     phase: 'Product education', goal: 'محتوى styling قابل للحفظ',
     hook: 'لو مش عارف تبدأ منين، دول 3 لوكات للويك إند.',
     format: 'Styling carousel · 5 slides',
@@ -292,7 +312,7 @@ const posts: SeedPost[] = [
     notes: 'Slides 1–4 looks، واستخدم الكابشن كـchecklist للطلب. لا تضف سعر أو خامة غير مؤكدة.', channel: 'instagram',
   },
   {
-    day: '22', time: '20:30', title: 'Lightweight Trousers — صورتين أوضح من كلام كتير',
+    day: '22', time: '20:30', title: '[Story] Lightweight Trousers — صورتين أوضح من كلام كتير',
     phase: 'Product education', goal: 'شرح بنطلون بدون ادعاء سعر أو خامة',
     hook: 'شوف البنطلون على الـrack وفي flat lay قبل ما تسأل.',
     format: 'Product carousel · 3 slides',
@@ -307,7 +327,7 @@ const posts: SeedPost[] = [
     notes: 'Slide 1 studio. Slide 2 flat lay. Slide 3 tee family/CTA. ممنوع سعر أو ادعاء خامة غير موثق.', channel: 'instagram',
   },
   {
-    day: '23', time: '21:00', title: 'KINBO — القاهرة والجيزة',
+    day: '23', time: '21:00', title: '[Story] KINBO — القاهرة والجيزة',
     phase: 'Local discovery', goal: 'ربط البراند بالموقع الجغرافي بوضوح',
     hook: 'في القاهرة أو الجيزة وبتدور على streetwear؟',
     format: 'Local discovery Reel · 7 sec · 9:16',
@@ -322,7 +342,7 @@ const posts: SeedPost[] = [
     notes: 'ابدأ بواجهة المكان ثم banner ثم المنتجات. النص على الشاشة: CAIRO + GIZA ONLY. استخدم Cairo/Giza geotag. لا تذكر سرعة، مصاريف، COD أو نطاقات أصغر من غير تأكيد.', channel: 'tiktok',
   },
   {
-    day: '24', time: '21:00', title: 'bull STOP ying — 3 ألوان',
+    day: '24', time: '21:00', title: '[Story] bull STOP ying — 3 ألوان',
     phase: 'Discovery', goal: 'استخراج Reel من صورة lineup واحدة',
     hook: 'نفس التصميم، 3 ألوان — كل لون له مود.',
     format: 'Color reveal Reel · 7 sec · 9:16',
@@ -336,7 +356,7 @@ const posts: SeedPost[] = [
     notes: 'استخدم 3 crops من صورة الـcolourway ثم reveal كامل، واختم بصورة المنتج. ما تعتمدش على تصويت؛ الهدف إن المشاهد يحفظ أو يرسل Screenshot.', channel: 'tiktok',
   },
   {
-    day: '25', time: '20:30', title: 'YEAR OF THE HORSE — تفاصيل اللوك',
+    day: '25', time: '20:30', title: '[Story] YEAR OF THE HORSE — تفاصيل اللوك',
     phase: 'Product education', goal: 'ربط التيشيرت بالبنطلون في Carousel واحد',
     hook: 'الأحمر هو اللي رابط اللوك كله.',
     format: 'Detail carousel · 5 slides',
@@ -351,7 +371,7 @@ const posts: SeedPost[] = [
     notes: 'Slide 1 lineup. Slide 2 studio. Slide 3 flat lay. Slides 4–5 crops للتفاصيل وCTA. لا offer banner ولا سعر بنطلون.', channel: 'instagram',
   },
   {
-    day: '26', time: '20:30', title: 'COREX بطريقتين',
+    day: '26', time: '20:30', title: '[Story] COREX بطريقتين',
     phase: 'Product education', goal: 'Carousel يربط المنتج المنفرد بالـfull fit',
     hook: 'شوف COREX لوحده وبعد ما يدخل في full fit.',
     format: 'Before/after carousel · 4 slides',
@@ -366,7 +386,7 @@ const posts: SeedPost[] = [
     notes: 'Slide 1 product. Slide 2 square full fit. Slide 3 4:5. Slide 4 CTA. لا تعرض نفس ratio مرتين بدون وظيفة مختلفة.', channel: 'instagram',
   },
   {
-    day: '27', time: '21:15', title: 'Flat-Lay Looks على الرمل',
+    day: '27', time: '21:15', title: '[Story] Flat-Lay Looks على الرمل',
     phase: 'Discovery', goal: 'Reel سريع متعدد المنتجات يوضح أسلوب التصوير',
     hook: 'من غير مانيكان: اللوك كامل قدامك على الرمل.',
     format: 'Discovery Reel · 9 sec · 9:16',
@@ -382,7 +402,7 @@ const posts: SeedPost[] = [
     notes: 'اعمل slow top-down pan على كل flat-lay. لا تستخدم mannequin أو white-background frames. Ending: CAIRO + GIZA / WHATSAPP.', channel: 'tiktok',
   },
   {
-    day: '28', time: '20:30', title: 'Linen Looks — الدليل الكامل',
+    day: '28', time: '20:30', title: '[Story] Linen Looks — الدليل الكامل',
     phase: 'Product education', goal: 'Carousel حفظ يوضح الـshirts والـset من زوايا مختلفة',
     hook: 'Linen shirts والـset من قدام ومن ورا وفي الألوان الظاهرة.',
     format: 'Product guide carousel · 4 slides',
@@ -398,7 +418,7 @@ const posts: SeedPost[] = [
     notes: 'Slide 1 shirts. Slides 2–4 الـset. استخدم أسماء وصفية فقط ولا تدّعي تركيب خامة أو سعر غير مؤكد.', channel: 'instagram',
   },
   {
-    day: '29', time: '21:30', title: 'Colourways في 7 ثواني',
+    day: '29', time: '21:30', title: '[Story] Colourways في 7 ثواني',
     phase: 'Discovery', goal: 'اختبار hook ومنتجات مختلفة بلا اعتماد على المتابعين',
     hook: 'اختيارك التصميم ولا اللون؟ شوف التلاتة بسرعة.',
     format: 'Discovery Reel · 7 sec · 9:16',
@@ -414,7 +434,7 @@ const posts: SeedPost[] = [
     notes: 'Hook 0–1s، كل تصميم 2s، CTA آخر ثانية. استخدم audio native وقت النشر؛ لا تستخدم “اختار رقم” كهدف أساسي.', channel: 'tiktok',
   },
   {
-    day: '30', time: '20:00', title: 'لو أول مرة تشوف KINBO — ابدأ هنا',
+    day: '30', time: '20:00', title: '[Story] لو أول مرة تشوف KINBO — ابدأ هنا',
     phase: 'Conversion', goal: 'بوست مرجعي للقادمين الجدد من Reels',
     hook: 'وصلت جديد؟ دي أسرع جولة في KINBO.',
     format: 'Start-here carousel · 6 slides',
@@ -431,7 +451,7 @@ const posts: SeedPost[] = [
     notes: 'Slide 1 hook. Slides 2–5 categories. Slide 6 order/delivery. لا تدّعي best seller أو آراء عملاء قبل وجود بيانات حقيقية.', channel: 'instagram',
   },
   {
-    day: '31', time: '21:00', title: 'August Launch Lookbook',
+    day: '31', time: '21:00', title: '[Story] August Launch Lookbook',
     phase: 'Conversion', goal: 'تجميع أقوى أصول الشهر في Lookbook قابل للحفظ',
     hook: 'أول Lookbook من KINBO — كل الستايلات في مكان واحد.',
     format: 'Lookbook carousel · 10 slides',
