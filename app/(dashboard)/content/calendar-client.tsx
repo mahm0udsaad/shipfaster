@@ -559,19 +559,25 @@ function Composer({
     }
   }
 
-  function removeCurrentImage() {
+  function removeImageAtIndex(targetIndex: number) {
     if (imageCount === 0) return;
-    const removedPreview = draft.previews[currentImage];
+    const removedPreview = draft.previews[targetIndex];
     if (removedPreview?.startsWith('blob:')) URL.revokeObjectURL(removedPreview);
     if (draft.imagePaths.length > 0) {
       set({
-        imagePaths: draft.imagePaths.filter((_, index) => index !== currentImage),
-        previews: draft.previews.filter((_, index) => index !== currentImage),
+        imagePaths: draft.imagePaths.filter((_, index) => index !== targetIndex),
+        previews: draft.previews.filter((_, index) => index !== targetIndex),
       });
     } else {
       set({ imageUrl: '', previews: [] });
     }
-    setActiveImage((index) => Math.max(0, Math.min(index, imageCount - 2)));
+    setActiveImage((index) =>
+      Math.max(0, Math.min(index === targetIndex ? 0 : index > targetIndex ? index - 1 : index, imageCount - 2)),
+    );
+  }
+
+  function removeCurrentImage() {
+    removeImageAtIndex(currentImage);
   }
 
   async function copyCaption() {
@@ -612,6 +618,8 @@ function Composer({
     }
   }
 
+  const isPublished = draft.status === 'PUBLISHED';
+
   return (
     <div
       className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"
@@ -624,10 +632,25 @@ function Composer({
         onClick={(e) => e.stopPropagation()}
         className="max-h-[92dvh] w-full max-w-3xl overflow-auto rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] p-5"
       >
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-[var(--font-display)] text-[16px] font-bold text-[var(--color-ink)]">
-            {draft.id ? 'Edit post' : 'New post'}
-          </h2>
+        <div className="mb-4 flex items-center justify-between gap-3 border-b border-[var(--color-line)] pb-3">
+          <div className="flex items-center gap-3">
+            <h2 className="font-[var(--font-display)] text-[16px] font-bold text-[var(--color-ink)]">
+              {draft.id ? 'Edit post' : 'New post'}
+            </h2>
+            <button
+              onClick={() => set({ status: isPublished ? 'SCHEDULED' : 'PUBLISHED' })}
+              type="button"
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-semibold transition-colors ${
+                isPublished
+                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25'
+                  : 'bg-[var(--color-surface-2)] text-[var(--color-muted)] border border-[var(--color-line-2)] hover:border-emerald-500/40 hover:text-emerald-400'
+              }`}
+              title="Click to toggle posted status"
+            >
+              <span className={`size-2 rounded-full ${isPublished ? 'bg-emerald-400 animate-pulse' : 'bg-gray-400'}`} />
+              {isPublished ? '✓ Posted' : 'Mark as Posted'}
+            </button>
+          </div>
           <button
             onClick={onClose}
             aria-label="Close"
@@ -748,32 +771,44 @@ function Composer({
               ) : null}
             </div>
 
-            {imageCount > 1 ? (
-              <div className="flex gap-2 overflow-x-auto border-t border-[var(--color-line)] p-2">
+            {imageCount > 0 ? (
+              <div className="flex gap-2 overflow-x-auto border-t border-[var(--color-line)] p-2 bg-[var(--color-surface)]">
                 {draft.previews.map((src, index) => (
-                  <button
-                    key={`${src}-${index}`}
-                    onClick={() => setActiveImage(index)}
-                    aria-label={`Show image ${index + 1}`}
-                    aria-current={index === currentImage}
-                    className={`size-14 shrink-0 overflow-hidden rounded-md border-2 ${
-                      index === currentImage
-                        ? 'border-[var(--color-brand)]'
-                        : 'border-transparent opacity-70 hover:opacity-100'
-                    }`}
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={src}
-                      alt=""
-                      width={56}
-                      height={56}
-                      loading="lazy"
-                      decoding="async"
-                      fetchPriority="low"
-                      className="size-full object-cover"
-                    />
-                  </button>
+                  <div key={`${src}-${index}`} className="group relative size-14 shrink-0">
+                    <button
+                      onClick={() => setActiveImage(index)}
+                      aria-label={`Show image ${index + 1}`}
+                      aria-current={index === currentImage}
+                      className={`size-full overflow-hidden rounded-md border-2 transition-all ${
+                        index === currentImage
+                          ? 'border-[var(--color-brand)] opacity-100 ring-2 ring-[var(--color-brand)]/20'
+                          : 'border-transparent opacity-65 hover:opacity-100'
+                      }`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={src}
+                        alt=""
+                        width={56}
+                        height={56}
+                        loading="lazy"
+                        decoding="async"
+                        fetchPriority="low"
+                        className="size-full object-cover"
+                      />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeImageAtIndex(index);
+                      }}
+                      aria-label={`Delete image ${index + 1}`}
+                      title={`Delete image ${index + 1}`}
+                      className="absolute -top-1.5 -right-1.5 grid size-5 place-items-center rounded-full bg-red-600 text-[10px] font-bold text-white shadow-md transition-transform hover:bg-red-700 hover:scale-110 z-20"
+                    >
+                      ✕
+                    </button>
+                  </div>
                 ))}
               </div>
             ) : null}
@@ -804,9 +839,9 @@ function Composer({
                 </button>
                 <button
                   onClick={removeCurrentImage}
-                  className="rounded-lg border border-[var(--color-line-2)] px-3 py-1.5 text-[12px] text-[var(--color-muted)] hover:bg-[var(--color-surface-2)]"
+                  className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-[12px] font-semibold text-red-400 hover:bg-red-500/20"
                 >
-                  Remove current
+                  Delete current image
                 </button>
               </>
             ) : null}
@@ -832,13 +867,22 @@ function Composer({
                     {currentImage + 1} / {imageCount}
                   </span>
                 </div>
-                <button
-                  onClick={() => setIsFullWindow(false)}
-                  aria-label="Close full window view"
-                  className="grid size-9 place-items-center rounded-lg bg-white/10 text-xl font-bold text-white hover:bg-white/25"
-                >
-                  ✕
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => removeImageAtIndex(currentImage)}
+                    aria-label="Delete active image"
+                    className="flex items-center gap-1 rounded-lg bg-red-600/80 px-3 py-1 text.12px] font-semibold text-white hover:bg-red-600"
+                  >
+                    🗑 Delete image
+                  </button>
+                  <button
+                    onClick={() => setIsFullWindow(false)}
+                    aria-label="Close full window view"
+                    className="grid size-9 place-items-center rounded-lg bg-white/10 text-xl font-bold text-white hover:bg-white/25"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
 
               <div
