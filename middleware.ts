@@ -14,10 +14,11 @@ import { NextResponse, type NextRequest } from 'next/server';
  *    this person see this page". Role enforcement lives where it can be reasoned about: the
  *    per-page requireFullAccess() guard, and the RLS policies in migration 0008.
  *
- *    /content is deliberately absent: it is the read-only content plan, served to a client
- *    from a link with no account. It renders `src/lib/content-plan.ts` and files under
- *    public/ — there is nothing behind it for a session to protect. Adding it back here means
- *    first moving it out of app/(public)/.
+ *    /content is absent from PROTECTED *and* skipped by REFRESH via the PUBLIC list below —
+ *    see that list's comment for why the REFRESH exemption matters on its own. It is the
+ *    read-only content plan, served to a client from a link with no account: it renders
+ *    `src/lib/content-plan.ts` and files under public/, so there is nothing behind it for a
+ *    session to protect. Restoring auth on it means first moving it out of app/(public)/.
  */
 
 const PROTECTED = [
@@ -29,7 +30,26 @@ const PROTECTED = [
   '/agents',
 ];
 
+/**
+ * Paths the REFRESH job must not touch, not just paths the GATE lets through.
+ *
+ * Before this list existed, /content fell through the GATE (correctly — it's not in
+ * PROTECTED) but still paid the REFRESH cost: a `supabase.auth.getUser()` round-trip on
+ * every request. That's a network call to Supabase carrying whatever auth cookie the browser
+ * has — and for a visitor with a stale/expired session cookie (e.g. someone who used to have
+ * a dashboard login), revalidating it can hang. Edge middleware has a hard invocation
+ * timeout, so a hung revalidation surfaces to the visitor as a 504
+ * MIDDLEWARE_INVOCATION_TIMEOUT — on a page that needs no session at all. Returning before
+ * the Supabase client is even constructed removes the dependency, not just the symptom.
+ */
+const PUBLIC = ['/content'];
+
 export async function middleware(request: NextRequest) {
+  const path = request.nextUrl.pathname;
+  if (PUBLIC.some((p) => path === p || path.startsWith(`${p}/`))) {
+    return NextResponse.next({ request });
+  }
+
   let response = NextResponse.next({ request });
 
   const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -53,7 +73,6 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const path = request.nextUrl.pathname;
   const needsAuth = PROTECTED.some((p) => path === p || path.startsWith(`${p}/`));
 
   if (!user && needsAuth) {
