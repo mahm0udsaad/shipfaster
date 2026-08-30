@@ -13,13 +13,17 @@ import { NextResponse, type NextRequest } from 'next/server';
  *    go to /login. This is a coarse check by design — it asks "is anyone there", not "may
  *    this person see this page". Role enforcement lives where it can be reasoned about: the
  *    per-page requireFullAccess() guard, and the RLS policies in migration 0008.
+ *
+ *    /content is deliberately absent: it is the read-only content plan, served to a client
+ *    from a link with no account. It renders `src/lib/content-plan.ts` and files under
+ *    public/ — there is nothing behind it for a session to protect. Adding it back here means
+ *    first moving it out of app/(public)/.
  */
 
 const PROTECTED = [
   '/today',
   '/approvals',
   '/projects',
-  '/content',
   '/clients',
   '/money',
   '/agents',
