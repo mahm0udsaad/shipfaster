@@ -76,7 +76,12 @@ export const PLAN_DEFAULT_MONTH = '2026-09';
 const ASK_ABOUT_UNLISTED_STOCK =
   'وعندنا كمان تيشيرتات وشورتات وقطع تانية لسه ما اتعرضتش هنا — ابعتلنا واتساب واسأل عليها، تبقى أول حد يشوفها.';
 
-export const CONTENT_PLAN: PlanPost[] = [
+/**
+ * The original one-image inventory is kept as a source of already-written product records.
+ * The public calendar below intentionally composes those assets into fewer, richer carousels
+ * for organic reach instead of publishing 22 catalogue-style posts back-to-back.
+ */
+const LEGACY_CONTENT_PLAN: PlanPost[] = [
   {
     id: 'kinbo-b2g1-launch',
     day: '2026-09-01',
@@ -607,4 +612,153 @@ export const CONTENT_PLAN: PlanPost[] = [
       { src: '/kinbo/joggers-limited-edition-black.png', alt: 'بنطلون LIMITED EDITION Joggers أسود معروض داخل متجر KINBO' },
     ],
   },
+];
+
+const ORGANIC_CAROUSEL_POSTS: PlanPost[] = [
+  {
+    id: 'kinbo-organic-graphic-tee-drop',
+    day: '2026-09-06',
+    time: '20:00',
+    title: 'أي جرافيك شبهك؟',
+    channel: 'instagram',
+    status: 'scheduled',
+    hook: 'مش كل تيشيرت جرافيك بيتلبس بنفس الطريقة.',
+    goal: 'زيادة الحفظ والتعليقات عبر مساعدة المتابع يختار بين 4 شخصيات جرافيك مختلفة',
+    format: 'Choice carousel · 4 slides · 1:1',
+    platforms: 'Instagram Feed + Facebook',
+    caption:
+      'مش كل يوم له نفس المود.\n\nWASTED لو بتحب الحضور الهادي، WORMHOLE أو POWER لو عايز لون يوقف السكرول، وAGENCY لو النبيتي هو لونك.\n\nاكتب في الكومنت: 1 أو 2 أو 3 أو 4 — أي واحد شبهك أكتر؟ واحفظ الكاروسيل لما تيجي تختار مقاسك.\n\nللمقاس والمخزون: ابعتلنا كلمة “GRAPHIC” على واتساب. #KINBO #تيشيرتات_جرافيك #StreetwearEgypt #CairoStreetwear #ستايل_رجالي',
+    cta: `Comment برقم اختيارك، واحفظ البوست، وبعدها WhatsApp بكلمة GRAPHIC للمقاس. ${ASK_ABOUT_UNLISTED_STOCK}`,
+    notes:
+      'Carousel من 4 صور: WASTED، WORMHOLE، POWER، AGENCY. الغلاف يكون WASTED. الكابشن يبيع فكرة اختيار الشخصية أولًا، ثم ينقل العميل لواتساب.',
+    slides: [
+      { src: '/kinbo/tee-wasted-black.png', alt: 'تيشيرت WASTED أسود داخل متجر KINBO' },
+      { src: '/kinbo/tee-wormhole-teal.png', alt: 'تيشيرت WORMHOLE بترولي بطباعة جرافيك' },
+      { src: '/kinbo/tee-power-teal.png', alt: 'تيشيرت POWER بترولي داخل متجر KINBO' },
+      { src: '/kinbo/tee-agency-burgundy.png', alt: 'تيشيرت AGENCY نبيتي داخل متجر KINBO' },
+    ],
+  },
+  {
+    id: 'kinbo-organic-no-fabricate-colorways',
+    day: '2026-09-09',
+    time: '19:30',
+    title: 'نفس التصميم… أنهي لون؟',
+    channel: 'instagram',
+    status: 'scheduled',
+    hook: 'الأوف وايت ولا الزيتي؟ الاختيار ده بيغيّر اللوك كله.',
+    goal: 'تحفيز التعليقات والحفظ حول اختيار اللون مع إبراز تنوع NO FABRICATE',
+    format: 'Colorway carousel · 2 slides · 1:1',
+    platforms: 'Instagram Feed + Facebook',
+    caption:
+      'نفس NO FABRICATE، إحساسين مختلفين.\n\nالأوف وايت: هادي ويمشي مع الدنيم.\nالزيتي: أغمق ويدخل بسهولة مع الأسود والبيج.\n\nلو هتاخد واحد بس، تختار A ولا B؟ ابعت البوست لصاحبك اللي دايمًا محتار في الألوان، واحفظه قبل ما تسأل عن المقاس.\n\nللمتاح والمقاسات: WhatsApp بكلمة “NF”. #KINBO #NoFabricate #اختيارك_يهم #StreetwearEgypt #ملابس_رجالي',
+    cta: `Comment A أو B، وWhatsApp بكلمة NF للمقاس والمخزون. ${ASK_ABOUT_UNLISTED_STOCK}`,
+    notes:
+      'Slide 1 أوف وايت، Slide 2 زيتي. استخدم الكابشن كاختبار لون بسيط بدل وصف خامة عام.',
+    slides: [
+      { src: '/kinbo/tee-no-fabricate-off-white.png', alt: 'تيشيرت NO FABRICATE أوف وايت داخل متجر KINBO' },
+      { src: '/kinbo/tee-no-fabricate-olive.png', alt: 'تيشيرت NO FABRICATE زيتي داخل متجر KINBO' },
+    ],
+  },
+  {
+    id: 'kinbo-organic-outline-colorways',
+    day: '2026-09-12',
+    time: '20:30',
+    title: 'BLACK OUTLINE بثلاث شخصيات',
+    channel: 'tiktok',
+    status: 'scheduled',
+    hook: 'نفس الجرافيك التونال، بس أنهي لون هياخد مكانه في دولابك؟',
+    goal: 'خلق نقاش ألوان قابل للمشاركة وتحويل الاهتمام إلى استفسارات مقاس',
+    format: 'Colorway carousel · 3 slides · 1:1',
+    platforms: 'Instagram Feed + Facebook + TikTok',
+    caption:
+      'BLACK OUTLINE للناس اللي بتحب التفاصيل اللي تتشاف لما تقرّب.\n\nأسود على أسود؟ أحمر طوبي؟ موف ترابي؟\n\nاكتب لونك في الكومنت، وبعدها اعمل share لحد ذوقه هادي بس مش عادي. لو عايز تشوفه على مقاسك، ابعت “OUTLINE” على واتساب. #KINBO #BlackOutline #ToneOnTone #CairoStreetwear #تيشيرتات',
+    cta: `Comment بلونك وWhatsApp بكلمة OUTLINE للمقاسات. ${ASK_ABOUT_UNLISTED_STOCK}`,
+    notes:
+      'Carousel من الأسود، الأحمر الطوبي، والموف الترابي. الغلاف الأسود. اترك المساحة الداكنة والطبعة التونال واضحين بدون نص فوق الصور.',
+    slides: [
+      { src: '/kinbo/tee-black-outline.png', alt: 'تيشيرت BLACK OUTLINE أسود بطباعة تونال' },
+      { src: '/kinbo/tee-black-outline-rust.png', alt: 'تيشيرت BLACK OUTLINE أحمر طوبي بطباعة سوداء' },
+      { src: '/kinbo/tee-black-outline-mauve.png', alt: 'تيشيرت BLACK OUTLINE موف ترابي بطباعة سوداء' },
+    ],
+  },
+  {
+    id: 'kinbo-organic-short-sleeve-shirts',
+    day: '2026-09-15',
+    time: '19:00',
+    title: '5 قمصان تغيّر لوك الصيف',
+    channel: 'instagram',
+    status: 'scheduled',
+    hook: 'قميص واحد مفتوح فوق تيشيرت = لوك جديد تمامًا.',
+    goal: 'تقديم أفكار تنسيق عملية تزيد الحفظ والمشاركة بدل عرض القميص كمنتج منفرد',
+    format: 'Styling carousel · 5 slides · 1:1',
+    platforms: 'Instagram Feed + Facebook',
+    caption:
+      'لو التيشيرت لوحده بقى متوقع، جرّب طبقة قميص.\n\nدنيم مغسول للّوك اليومي، Pinstripe للّوك المرتب، أسود لو عايز حاجة مضمونة، وبرتقالي محروق أو أخضر غامق لو عايز اللون يعمل الشغل.\n\nاحفظ الكاروسيل كـ cheat sheet للتنسيق، واكتب في الكومنت: بتلبس القميص مفتوح ولا مقفول؟\n\nللمقاسات والأسعار: ابعت “SHIRTS” على واتساب. #KINBO #قمصان_رجالي #MenswearEgypt #CairoStyle #StreetwearEgypt',
+    cta: `Save للّوكات وComment مفتوح أو مقفول، ثم WhatsApp بكلمة SHIRTS. ${ASK_ABOUT_UNLISTED_STOCK}`,
+    notes:
+      'رتب السلايدات: دنيم، Pinstripe، أسود، برتقالي محروق، أخضر غامق. الغلاف الدنيم لأنه الأكثر قابلية للحفظ والتنسيق.',
+    slides: [
+      { src: '/kinbo/shirt-denim-washed-short-sleeve.png', alt: 'قميص دنيم مغسول بكم قصير' },
+      { src: '/kinbo/shirt-pinstripe-white-black-short-sleeve.png', alt: 'قميص أبيض بخطوط سوداء رفيعة' },
+      { src: '/kinbo/shirt-black-short-sleeve.png', alt: 'قميص أسود سادة بكم قصير' },
+      { src: '/kinbo/shirt-burnt-orange-short-sleeve.png', alt: 'قميص برتقالي محروق بكم قصير' },
+      { src: '/kinbo/shirt-forest-green-short-sleeve.png', alt: 'قميص أخضر غامق بكم قصير' },
+    ],
+  },
+  {
+    id: 'kinbo-organic-long-sleeve-shirts',
+    day: '2026-09-18',
+    time: '20:00',
+    title: 'اختار طبقتك: 5 قمصان كم طويل',
+    channel: 'instagram',
+    status: 'scheduled',
+    hook: 'من لون هادي لملمس واضح — أي طبقة تكمل ستايلك؟',
+    goal: 'زيادة الحفظ عبر دليل اختيار سريع للقمصان طويلة الأكمام',
+    format: 'Style guide carousel · 5 slides · 1:1',
+    platforms: 'Instagram Feed + Facebook',
+    caption:
+      'الطبقة الصح تخلّي نفس التيشيرت يبان كأنه لوك جديد.\n\nأخضر وأبيض لو بتحب الخطوط، أسود لو عايز الأساس، بني لو عينك على الخامة، وأزرق فاتح أو رمادي لو عايز لون يشتغل طول الأسبوع.\n\nاحفظ الدليل، وابعت الكاروسيل لحد بيجهز خروجة ومش عارف يلبس إيه. للمقاس: “LAYER” على واتساب. #KINBO #Layering #قمصان_رجالي #StreetwearEgypt #CairoStreetwear',
+    cta: `Save وShare لحد محتار، ثم WhatsApp بكلمة LAYER للمقاس. ${ASK_ABOUT_UNLISTED_STOCK}`,
+    notes:
+      'السلايدات: أخضر/أبيض مخطط، أسود، بني بملمس، أزرق فاتح، رمادي. حافظ على ترتيب من الأكثر statement إلى الأكثر neutral.',
+    slides: [
+      { src: '/kinbo/shirt-striped-green-white-long-sleeve.png', alt: 'قميص أخضر وأبيض مخطط بكم طويل' },
+      { src: '/kinbo/shirt-black-long-sleeve.png', alt: 'قميص أسود سادة بكم طويل' },
+      { src: '/kinbo/shirt-brown-textured-long-sleeve.png', alt: 'قميص بني بملمس واضح بكم طويل' },
+      { src: '/kinbo/shirt-light-blue-long-sleeve.png', alt: 'قميص أزرق فاتح بكم طويل' },
+      { src: '/kinbo/shirt-gray-long-sleeve.png', alt: 'قميص رمادي بكم طويل' },
+    ],
+  },
+  {
+    id: 'kinbo-organic-joggers-guide',
+    day: '2026-09-21',
+    time: '20:30',
+    title: '3 جوجرز — 3 طرق تلبسهم',
+    channel: 'tiktok',
+    status: 'scheduled',
+    hook: 'راحة البيت؟ شكل الخروجة؟ الاتنين ممكن.',
+    goal: 'إزالة تردد الشراء عبر ربط كل جوجرز باستخدام واضح وتشجيع الاستفسار عن المقاس',
+    format: 'Use-case carousel · 3 slides · 1:1',
+    platforms: 'Instagram Feed + Facebook + TikTok',
+    caption:
+      'مش لازم تختار بين الراحة والشكل.\n\nMIU الرمادي الداكن للّوك الرياضي، Minimal الرمادي الفاتح لو بتحب الهدوء، وLIMITED EDITION الأسود لو عايز تفصيلة ترفع الأساسيات.\n\nأنهي واحد هتلبسه أكتر؟ اكتب MIU أو MINIMAL أو LIMITED، واحفظ البوست قبل ما تطلب.\n\nابعت الكلمة نفسها على واتساب وهنبعتلك المقاسات المتاحة. #KINBO #Joggers #StreetwearEgypt #AthleisureEgypt #ستايل_رجالي',
+    cta: `Comment MIU أو MINIMAL أو LIMITED، ثم WhatsApp بنفس الكلمة للمقاس. ${ASK_ABOUT_UNLISTED_STOCK}`,
+    notes:
+      'سلايد واحد لكل جوجرز. اربط كل لون/تفصيلة بحالة استخدام في الكابشن بدل ادعاء مواصفات غير مؤكدة.',
+    slides: [
+      { src: '/kinbo/joggers-miu-slate.png', alt: 'بنطلون MIU Joggers رمادي داكن' },
+      { src: '/kinbo/joggers-minimal-light-gray.png', alt: 'بنطلون Minimal Joggers رمادي فاتح' },
+      { src: '/kinbo/joggers-limited-edition-black.png', alt: 'بنطلون LIMITED EDITION Joggers أسود' },
+    ],
+  },
+];
+
+/**
+ * The public calendar uses the original offer launch plus the organic carousel sequence.
+ * The 22 generated assets remain available in the carousel slides, without duplicate
+ * catalogue posts competing with one another in the same month.
+ */
+export const CONTENT_PLAN: PlanPost[] = [
+  ...LEGACY_CONTENT_PLAN.slice(0, 5),
+  ...ORGANIC_CAROUSEL_POSTS,
 ];
